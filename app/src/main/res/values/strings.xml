@@ -1,0 +1,161 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Token Monitor</string>
+
+    <!-- Setup -->
+    <string name="setup_title">Token Monitor</string>
+    <string name="setup_subtitle">Connect to your hub to view token statistics</string>
+    <string name="setup_hub_connection">Hub Connection</string>
+    <string name="setup_hub_url">Hub URL</string>
+    <string name="setup_hub_url_placeholder">https://hub.example.com</string>
+    <string name="setup_hub_secret">Hub Secret</string>
+    <string name="setup_hub_secret_placeholder">Enter shared secret</string>
+    <string name="setup_connect">Connect</string>
+    <string name="setup_connecting">Connecting…</string>
+    <string name="setup_error_url_required">Please enter a hub URL</string>
+    <string name="setup_error_connection_failed">Connection failed: %s</string>
+    <string name="setup_footer">Enter the URL of your Token Monitor hub and the shared secret to start monitoring.</string>
+
+    <!-- Dashboard tabs -->
+    <string name="tab_overview">Overview</string>
+    <string name="tab_quota">Quota</string>
+    <string name="tab_devices">Devices</string>
+    <string name="tab_models">Models</string>
+    <string name="tab_tools">Tools</string>
+    <string name="tab_sessions">Sessions</string>
+    <string name="tab_trends">Trends</string>
+    <string name="tab_api_keys">API Keys</string>
+
+    <!-- Top bar -->
+    <string name="title_token_monitor">Token Monitor</string>
+    <string name="devices_count">%d devices</string>
+    <string name="action_refresh">Refresh</string>
+    <string name="action_disconnect">Disconnect</string>
+    <string name="menu_more">More</string>
+    <string name="menu_refresh">Refresh</string>
+    <string name="menu_language">Language</string>
+
+    <!-- Overview -->
+    <string name="period_today">Today</string>
+    <string name="period_month">This Month</string>
+    <string name="period_all_time">All Time</string>
+    <string name="stat_tokens">Tokens</string>
+    <string name="stat_cost">Cost</string>
+    <string name="stat_output">Output Tokens</string>
+    <string name="stat_cache">Cache Tokens</string>
+    <string name="stat_messages">Messages</string>
+    <string name="overview_model_usage">Today\'s Model Usage</string>
+    <string name="overview_hub_version">Hub v%d</string>
+
+    <!-- Quota -->
+    <string name="quota_today_consumption">Today\'s Consumption</string>
+    <string name="quota_balance">Balance</string>
+    <string name="quota_prepaid_usd">Prepaid (USD)</string>
+    <string name="quota_balance_format">Balance (%s)</string>
+    <string name="quota_today_spend">Today Spend</string>
+    <string name="quota_month_spend">Month Spend</string>
+    <string name="quota_rate_limits">Rate Limits</string>
+    <string name="quota_used_format">Used %.0f%%</string>
+    <string name="quota_left_format">%.0f%% left</string>
+    <string name="quota_resets_format">Resets %s</string>
+    <string name="quota_no_data">No quota data</string>
+
+    <!-- Devices -->
+    <string name="devices_no_devices">No devices connected</string>
+    <string name="devices_today_format">Today: %s tokens · %s</string>
+    <string name="devices_period_format">%1$s: %2$s</string>
+    <string name="devices_total_format">%1$s tokens · %2$s</string>
+    <string name="devices_last_seen_format">Last seen: %s</string>
+
+    <!-- Models -->
+    <string name="models_no_data">No model data</string>
+    <string name="models_output_format">Output: %s</string>
+    <string name="models_cache_format">Cache: %s</string>
+
+    <!-- Tools -->
+    <string name="tools_no_data">No tool data</string>
+    <string name="tools_output_format">Output: %s</string>
+    <string name="tools_cache_format">Cache: %s</string>
+
+    <!-- Sessions -->
+    <string name="sessions_no_sessions">No sessions</string>
+    <string name="sessions_msgs_cost_format">Msgs: %d · Cost: %s</string>
+
+    <!-- Session Detail -->
+    <string name="session_token_breakdown">Token Breakdown</string>
+    <string name="session_input">Input</string>
+    <string name="session_output">Output</string>
+    <string name="session_cache_read">Cache Read</string>
+    <string name="session_cache_write">Cache Write</string>
+    <string name="session_reasoning">Reasoning</string>
+    <string name="session_total">Total</string>
+    <string name="session_stats">Stats</string>
+    <string name="session_models_used">Models Used</string>
+    <string name="session_providers">Providers</string>
+    <string name="session_time">Time</string>
+    <string name="session_started_format">Started: %s</string>
+    <string name="session_last_used_format">Last used: %s</string>
+    <string name="session_na">N/A</string>
+    <string name="session_close">Close</string>
+
+    <!-- Trends -->
+    <string name="trends_no_data">No historical data yet</string>
+    <string name="trends_no_data_hint">Data accumulates as AI tools generate usage</string>
+    <string name="trends_activity">Activity</string>
+    <string name="trends_summary">Summary</string>
+    <string name="trends_total_tokens">Total Tokens</string>
+    <string name="trends_total_cost">Total Cost</string>
+    <string name="trends_active_days">Active Days</string>
+    <string name="trends_current_streak">Current Streak</string>
+    <string name="trends_longest_streak">Longest Streak</string>
+    <string name="trends_peak_day">Peak Day</string>
+    <string name="trends_streak_format">%dd</string>
+    <string name="trends_favorite_model_format">Favorite model: %s</string>
+    <string name="trends_daily_tokens">Daily Token Usage</string>
+    <string name="trends_daily_cost">Daily Cost (USD)</string>
+    <string name="trends_monthly">Monthly Breakdown</string>
+
+    <!-- Time -->
+    <string name="time_just_now">just now</string>
+    <string name="time_minutes_ago">%dm ago</string>
+    <string name="time_hours_ago">%dh ago</string>
+    <string name="time_days_ago">%dd ago</string>
+
+    <!-- Language -->
+    <string name="device_id_format">ID: %s</string>
+    <string name="action_delete_device">Delete device</string>
+    <string name="device_delete_title">Delete Device?</string>
+    <string name="device_delete_message">Remove \"%1$s\" from monitoring? This cannot be undone.</string>
+    <string name="device_delete_confirm">Delete</string>
+    <string name="device_delete_cancel">Cancel</string>
+    <string name="device_deleted">Device deleted</string>
+    <string name="device_delete_failed">Failed to delete device: %s</string>
+    <string name="language">Language</string>
+
+    <!-- API Keys -->
+    <string name="apikeys_title">API Keys</string>
+    <string name="apikeys_import_desc">Import</string>
+    <string name="apikeys_export_desc">Export</string>
+    <string name="apikeys_add_desc">Add Key</string>
+    <string name="apikeys_search_hint">Search platforms or key names…</string>
+    <string name="apikeys_empty">No API keys</string>
+    <string name="apikeys_empty_hint">Tap + to add or import from file</string>
+    <string name="apikeys_keys_format">%d key(s)</string>
+    <string name="apikeys_copied">Copied!</string>
+    <string name="apikeys_copy_desc">Copy</string>
+    <string name="apikeys_delete_desc">Delete</string>
+    <string name="apikeys_add_title">Add API Key</string>
+    <string name="apikeys_platform_label">Platform</string>
+    <string name="apikeys_name_label">Name</string>
+    <string name="apikeys_key_label">API Key</string>
+    <string name="apikeys_key_too_short">Key seems too short</string>
+    <string name="apikeys_import_title">Import API Keys?</string>
+    <string name="apikeys_import_warning">This will replace all existing keys with the imported data.</string>
+    <string name="apikeys_invalid_json">Invalid JSON format</string>
+    <string name="apikeys_import_btn">Import</string>
+    <string name="apikeys_delete_title">Delete Key?</string>
+    <string name="apikeys_delete_msg">Delete \"%1$s\" from %2$s?</string>
+    <string name="apikeys_cancel">Cancel</string>
+    <string name="apikeys_delete_btn">Delete</string>
+    <string name="apikeys_add_btn">Add</string>
+</resources>

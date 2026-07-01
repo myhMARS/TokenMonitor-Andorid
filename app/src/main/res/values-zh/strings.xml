@@ -1,0 +1,161 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Token Monitor</string>
+
+    <!-- Setup -->
+    <string name="setup_title">Token Monitor</string>
+    <string name="setup_subtitle">连接到您的 Hub 以查看 Token 统计数据</string>
+    <string name="setup_hub_connection">Hub 连接</string>
+    <string name="setup_hub_url">Hub 地址</string>
+    <string name="setup_hub_url_placeholder">https://hub.example.com</string>
+    <string name="setup_hub_secret">共享密钥</string>
+    <string name="setup_hub_secret_placeholder">输入共享密钥</string>
+    <string name="setup_connect">连接</string>
+    <string name="setup_connecting">连接中…</string>
+    <string name="setup_error_url_required">请输入 Hub 地址</string>
+    <string name="setup_error_connection_failed">连接失败: %s</string>
+    <string name="setup_footer">输入 Token Monitor Hub 地址和共享密钥以开始监控。</string>
+
+    <!-- Dashboard tabs -->
+    <string name="tab_overview">概览</string>
+    <string name="tab_quota">额度</string>
+    <string name="tab_devices">设备</string>
+    <string name="tab_models">模型</string>
+    <string name="tab_tools">工具</string>
+    <string name="tab_sessions">会话</string>
+    <string name="tab_trends">趋势</string>
+    <string name="tab_api_keys">API 密钥</string>
+
+    <!-- Top bar -->
+    <string name="title_token_monitor">Token Monitor</string>
+    <string name="devices_count">%d 台设备</string>
+    <string name="action_refresh">刷新</string>
+    <string name="action_disconnect">断开</string>
+    <string name="menu_more">更多</string>
+    <string name="menu_refresh">刷新</string>
+    <string name="menu_language">语言</string>
+
+    <!-- Overview -->
+    <string name="period_today">今日</string>
+    <string name="period_month">本月</string>
+    <string name="period_all_time">总计</string>
+    <string name="stat_tokens">Token</string>
+    <string name="stat_cost">费用</string>
+    <string name="stat_output">输出 Token</string>
+    <string name="stat_cache">缓存 Token</string>
+    <string name="stat_messages">消息数</string>
+    <string name="overview_model_usage">今日模型用量</string>
+    <string name="overview_hub_version">Hub v%d</string>
+
+    <!-- Quota -->
+    <string name="quota_today_consumption">今日消耗</string>
+    <string name="quota_balance">余额</string>
+    <string name="quota_prepaid_usd">预付费 (USD)</string>
+    <string name="quota_balance_format">余额 (%s)</string>
+    <string name="quota_today_spend">今日花费</string>
+    <string name="quota_month_spend">本月花费</string>
+    <string name="quota_rate_limits">速率限制</string>
+    <string name="quota_used_format">已用 %.0f%%</string>
+    <string name="quota_left_format">剩余 %.0f%%</string>
+    <string name="quota_resets_format">重置 %s</string>
+    <string name="quota_no_data">无额度数据</string>
+
+    <!-- Devices -->
+    <string name="devices_no_devices">无已连接设备</string>
+    <string name="devices_today_format">今日: %s token · %s</string>
+    <string name="devices_period_format">%1$s: %2$s</string>
+    <string name="devices_total_format">%1$s token · %2$s</string>
+    <string name="devices_last_seen_format">最后上线: %s</string>
+
+    <!-- Models -->
+    <string name="models_no_data">无模型数据</string>
+    <string name="models_output_format">输出: %s</string>
+    <string name="models_cache_format">缓存: %s</string>
+
+    <!-- Tools -->
+    <string name="tools_no_data">无工具数据</string>
+    <string name="tools_output_format">输出: %s</string>
+    <string name="tools_cache_format">缓存: %s</string>
+
+    <!-- Sessions -->
+    <string name="sessions_no_sessions">无会话</string>
+    <string name="sessions_msgs_cost_format">消息: %d · 费用: %s</string>
+
+    <!-- Session Detail -->
+    <string name="session_token_breakdown">Token 明细</string>
+    <string name="session_input">输入</string>
+    <string name="session_output">输出</string>
+    <string name="session_cache_read">缓存读取</string>
+    <string name="session_cache_write">缓存写入</string>
+    <string name="session_reasoning">推理</string>
+    <string name="session_total">总计</string>
+    <string name="session_stats">统计</string>
+    <string name="session_models_used">使用模型</string>
+    <string name="session_providers">服务商</string>
+    <string name="session_time">时间</string>
+    <string name="session_started_format">开始: %s</string>
+    <string name="session_last_used_format">最后使用: %s</string>
+    <string name="session_na">无</string>
+    <string name="session_close">关闭</string>
+
+    <!-- Trends -->
+    <string name="trends_no_data">暂无历史数据</string>
+    <string name="trends_no_data_hint">AI 工具产生用量后数据将在此积累</string>
+    <string name="trends_activity">活动</string>
+    <string name="trends_summary">摘要</string>
+    <string name="trends_total_tokens">总 Token</string>
+    <string name="trends_total_cost">总费用</string>
+    <string name="trends_active_days">活跃天数</string>
+    <string name="trends_current_streak">当前连续</string>
+    <string name="trends_longest_streak">最长连续</string>
+    <string name="trends_peak_day">峰值日</string>
+    <string name="trends_streak_format">%d天</string>
+    <string name="trends_favorite_model_format">最常用模型: %s</string>
+    <string name="trends_daily_tokens">每日 Token 用量</string>
+    <string name="trends_daily_cost">每日费用 (USD)</string>
+    <string name="trends_monthly">月度明细</string>
+
+    <!-- Time -->
+    <string name="time_just_now">刚刚</string>
+    <string name="time_minutes_ago">%d分钟前</string>
+    <string name="time_hours_ago">%d小时前</string>
+    <string name="time_days_ago">%d天前</string>
+
+    <!-- Language -->
+    <string name="device_id_format">ID: %s</string>
+    <string name="action_delete_device">删除设备</string>
+    <string name="device_delete_title">确认删除？</string>
+    <string name="device_delete_message">将 \"%1$s\" 从监控中移除？此操作不可撤销。</string>
+    <string name="device_delete_confirm">删除</string>
+    <string name="device_delete_cancel">取消</string>
+    <string name="device_deleted">设备已删除</string>
+    <string name="device_delete_failed">删除失败: %s</string>
+    <string name="language">语言</string>
+
+    <!-- API Keys -->
+    <string name="apikeys_title">API 密钥</string>
+    <string name="apikeys_import_desc">导入</string>
+    <string name="apikeys_export_desc">导出</string>
+    <string name="apikeys_add_desc">添加密钥</string>
+    <string name="apikeys_search_hint">搜索平台或密钥名称…</string>
+    <string name="apikeys_empty">暂无 API 密钥</string>
+    <string name="apikeys_empty_hint">点击 + 添加或从文件导入</string>
+    <string name="apikeys_keys_format">%d 个密钥</string>
+    <string name="apikeys_copied">已复制!</string>
+    <string name="apikeys_copy_desc">复制</string>
+    <string name="apikeys_delete_desc">删除</string>
+    <string name="apikeys_add_title">添加 API 密钥</string>
+    <string name="apikeys_platform_label">平台</string>
+    <string name="apikeys_name_label">名称</string>
+    <string name="apikeys_key_label">API 密钥</string>
+    <string name="apikeys_key_too_short">密钥似乎太短</string>
+    <string name="apikeys_import_title">导入 API 密钥？</string>
+    <string name="apikeys_import_warning">这将替换所有现有密钥。</string>
+    <string name="apikeys_invalid_json">无效的 JSON 格式</string>
+    <string name="apikeys_import_btn">导入</string>
+    <string name="apikeys_delete_title">删除密钥？</string>
+    <string name="apikeys_delete_msg">从 %2$s 删除 \"%1$s\"？</string>
+    <string name="apikeys_cancel">取消</string>
+    <string name="apikeys_delete_btn">删除</string>
+    <string name="apikeys_add_btn">添加</string>
+</resources>
