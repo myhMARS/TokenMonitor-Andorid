@@ -22,7 +22,7 @@ data class DashboardUiState(
     val isConfigured: Boolean = false,
     val hubUrl: String = "",
     val hubSecret: String = "",
-    val isConnecting: Boolean = false,
+    val isConnecting: Boolean = true,
     val connectionError: String? = null,
     val isConnected: Boolean = false,
     val today: UsagePeriod? = null,
@@ -61,6 +61,8 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
                 )
                 repository.configure(savedUrl, savedSecret)
                 connectAndLoad()
+            } else {
+                _uiState.value = _uiState.value.copy(isConnecting = false)
             }
         }
     }
@@ -151,6 +153,7 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
     fun disconnect() {
         repository.close()
         _uiState.value = DashboardUiState(
+            isConnecting = false,
             hubUrl = _uiState.value.hubUrl,
             hubSecret = _uiState.value.hubSecret
         )
