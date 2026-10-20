@@ -60,6 +60,7 @@ import com.tokenmonitor.app.data.model.ApiKeyEntry
 import com.tokenmonitor.app.data.model.PlatformKeys
 import com.tokenmonitor.app.data.model.PlatformsData
 import io.ktor.client.HttpClient
+import io.ktor.client.plugins.HttpTimeout
 import io.ktor.client.request.get
 import io.ktor.client.request.header
 import io.ktor.client.request.post
@@ -67,11 +68,28 @@ import io.ktor.client.request.setBody
 import io.ktor.http.ContentType
 import io.ktor.http.contentType
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 import java.time.LocalDate
+
+// One shared client: validations run concurrently, so creating and closing an
+// HttpClient per key would add connection setup cost and churn TLS state.
+private val validationClient by lazy {
+    HttpClient {
+        install(HttpTimeout) {
+            requestTimeoutMillis = 20_000
+            connectTimeoutMillis = 10_000
+            socketTimeoutMillis = 20_000
+        }
+    }
+}
 
 private var autoValidated = false
 private val persistedResults = mutableMapOf<String, String>()
@@ -141,17 +159,16 @@ fun ApiKeysTab(keyAction: String? = null, onKeyActionHandled: () -> Unit = {}, i
         persistedValidating += tag
         validationVersion++
         val authValue = platform.authHeader.replace("{api_key}", key)
-        val client = HttpClient()
         val result = try {
             val resp = withContext(Dispatchers.IO) {
                 if (platform.usePost) {
-                    client.post(platform.validationUrl) {
+                    validationClient.post(platform.validationUrl) {
                         header("Authorization", authValue)
                         contentType(ContentType.Application.Json)
                         setBody("""{"model":"gpt-3.5-turbo","messages":[{"role":"user","content":"hi"}],"max_tokens":1}""")
                     }
                 } else {
-                    client.get(platform.validationUrl) { header("Authorization", authValue) }
+                    validationClient.get(platform.validationUrl) { header("Authorization", authValue) }
                 }
             }
             when {
@@ -168,7 +185,7 @@ fun ApiKeysTab(keyAction: String? = null, onKeyActionHandled: () -> Unit = {}, i
                 e.message?.contains("connect", true) == true -> "error: connection refused"
                 else -> "error: ${e.message?.take(40) ?: "unknown"}"
             }
-        }.also { client.close() }
+        }
         persistedResults[tag] = result
         persistedValidating -= tag
         validationVersion++
@@ -199,13 +216,26 @@ fun ApiKeysTab(keyAction: String? = null, onKeyActionHandled: () -> Unit = {}, i
         autoValidated = true
         LaunchedEffect(Unit) {
             scope.launch {
-            data.platforms.forEach { (platformId, pkeys) ->
-                val pDef = knownPlatforms.find { it.id == platformId.lowercase() } ?: return@forEach
-                if (pDef.validationUrl.isEmpty()) return@forEach
-                pkeys.keys.forEach { entry ->
-                    validateKeySuspend(pDef, entry.key, entry.name)
+                // Different providers are independent, so validate up to four at
+                // a time instead of serialising every request behind the previous
+                // one. The cap keeps a batch from turning into a burst.
+                val limiter = Semaphore(4)
+                coroutineScope {
+                    data.platforms.flatMap { (platformId, pkeys) ->
+                        val pDef = knownPlatforms.find { it.id == platformId.lowercase() }
+                            ?: return@flatMap emptyList<Pair<PlatformDef, ApiKeyEntry>>()
+                        if (pDef.validationUrl.isEmpty()) {
+                            return@flatMap emptyList<Pair<PlatformDef, ApiKeyEntry>>()
+                        }
+                        pkeys.keys.map { entry -> pDef to entry }
+                    }.map { (pDef, entry) ->
+                        async {
+                            limiter.withPermit {
+                                validateKeySuspend(pDef, entry.key, entry.name)
+                            }
+                        }
+                    }.awaitAll()
                 }
-            }
             }
         }
     }
