@@ -359,4 +359,9 @@
     <string name="projects_summary_format">%1$d 个项目 · %2$s token · %3$s</string>
     <string name="overview_summary_format">%1$d 台设备 · 今日 %2$s token · %3$s</string>
     <string name="trends_summary_line_format">%1$d 个活跃天 · %2$s token · %3$s</string>
+    <string name="apikeys_search_open">搜索密钥</string>
+    <string name="apikeys_search_close">关闭搜索</string>
+    <string name="apikeys_action_search">搜索</string>
+    <string name="apikeys_action_add">添加密钥</string>
+    <string name="apikeys_actions_open">密钥操作</string>
 </resources>

@@ -359,4 +359,9 @@
     <string name="projects_summary_format">%1$d projects · %2$s tokens · %3$s</string>
     <string name="overview_summary_format">%1$d devices · today %2$s tokens · %3$s</string>
     <string name="trends_summary_line_format">%1$d active days · %2$s tokens · %3$s</string>
+    <string name="apikeys_search_open">Search keys</string>
+    <string name="apikeys_search_close">Close search</string>
+    <string name="apikeys_action_search">Search</string>
+    <string name="apikeys_action_add">Add key</string>
+    <string name="apikeys_actions_open">Key actions</string>
 </resources>

@@ -5,6 +5,11 @@ import android.content.ClipboardManager
 import android.content.Context
 import android.widget.Toast
 import androidx.compose.foundation.clickable
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Error
 import androidx.compose.material3.CircularProgressIndicator
@@ -17,6 +22,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -39,6 +45,9 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.FilledTonalIconButton
+import androidx.compose.material3.ExtendedFloatingActionButton
+import androidx.compose.material3.FloatingActionButton
+import androidx.compose.material3.SmallFloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.IconButton
@@ -57,8 +66,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -378,38 +390,17 @@ fun ApiKeysTab(keyAction: String? = null, onKeyActionHandled: () -> Unit = {}, i
     }
 
     val totalKeys = data.platforms.values.sumOf { it.keys.size }
+    var searchExpanded by remember { mutableStateOf(false) }
+    var menuExpanded by remember { mutableStateOf(false) }
+    val searchFocus = remember { FocusRequester() }
+    val focusManager = LocalFocusManager.current
+    LaunchedEffect(searchExpanded) {
+        if (searchExpanded) searchFocus.requestFocus()
+    }
 
-    Column(modifier = Modifier.fillMaxSize()) {
-        TabSummary(stringResource(R.string.apikeys_summary_format, data.platforms.size, totalKeys))
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(start = 16.dp, end = 16.dp, top = 4.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            OutlinedTextField(
-                value = searchQuery,
-                onValueChange = { searchQuery = it },
-                modifier = Modifier.weight(1f),
-                placeholder = { Text(stringResource(R.string.apikeys_search_hint)) },
-                leadingIcon = { Icon(Icons.Default.Search, null) },
-                trailingIcon = if (searchQuery.isNotEmpty()) {
-                    {
-                        IconButton(onClick = { searchQuery = "" }) {
-                            Icon(Icons.Default.Close, stringResource(R.string.apikeys_clear_search))
-                        }
-                    }
-                } else {
-                    null
-                },
-                singleLine = true,
-                shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp)
-            )
-            Spacer(modifier = Modifier.width(8.dp))
-            FilledTonalIconButton(onClick = { showAddDialog = true }) {
-                Icon(Icons.Default.Add, contentDescription = stringResource(R.string.apikeys_add_btn))
-            }
-        }
+    Box(modifier = Modifier.fillMaxSize()) {
+        Column(modifier = Modifier.fillMaxSize()) {
+            TabSummary(stringResource(R.string.apikeys_summary_format, data.platforms.size, totalKeys))
         if (data.platforms.isEmpty()) {
             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -431,7 +422,7 @@ fun ApiKeysTab(keyAction: String? = null, onKeyActionHandled: () -> Unit = {}, i
         } else {
             LazyColumn(
                 modifier = Modifier.fillMaxSize(),
-                contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+                contentPadding = androidx.compose.foundation.layout.PaddingValues(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 100.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 items(filteredPlatforms) { (platform, pkeys) ->
@@ -544,7 +535,98 @@ fun ApiKeysTab(keyAction: String? = null, onKeyActionHandled: () -> Unit = {}, i
         }
     }
 
-    // Add dialog
+        Column(
+            modifier = Modifier
+                .align(Alignment.BottomEnd)
+                .fillMaxWidth()
+                .imePadding()
+                .padding(16.dp),
+            horizontalAlignment = Alignment.End,
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            AnimatedVisibility(
+                visible = searchExpanded,
+                enter = fadeIn() + expandVertically(),
+                exit = fadeOut() + shrinkVertically()
+            ) {
+                Column {
+                    Surface(
+                        shape = androidx.compose.foundation.shape.RoundedCornerShape(28.dp),
+                        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                        tonalElevation = 3.dp,
+                        shadowElevation = 6.dp
+                    ) {
+                        OutlinedTextField(
+                            value = searchQuery,
+                            onValueChange = { searchQuery = it },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .focusRequester(searchFocus),
+                            placeholder = { Text(stringResource(R.string.apikeys_search_hint)) },
+                            leadingIcon = { Icon(Icons.Default.Search, null) },
+                            trailingIcon = if (searchQuery.isNotEmpty()) {
+                                {
+                                    IconButton(onClick = { searchQuery = "" }) {
+                                        Icon(Icons.Default.Close, stringResource(R.string.apikeys_clear_search))
+                                    }
+                                }
+                            } else {
+                                null
+                            },
+                            singleLine = true,
+                            shape = androidx.compose.foundation.shape.RoundedCornerShape(28.dp)
+                        )
+                    }
+                }
+            }
+            AnimatedVisibility(
+                visible = menuExpanded,
+                enter = fadeIn() + expandVertically(),
+                exit = fadeOut() + shrinkVertically()
+            ) {
+                Column(
+                    horizontalAlignment = Alignment.End,
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    ExtendedFloatingActionButton(
+                        onClick = {
+                            menuExpanded = false
+                            searchExpanded = true
+                        },
+                        icon = { Icon(Icons.Default.Search, contentDescription = null) },
+                        text = { Text(stringResource(R.string.apikeys_action_search)) },
+                        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
+                    )
+                    ExtendedFloatingActionButton(
+                        onClick = {
+                            menuExpanded = false
+                            showAddDialog = true
+                        },
+                        icon = { Icon(Icons.Default.Add, contentDescription = null) },
+                        text = { Text(stringResource(R.string.apikeys_action_add)) },
+                        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
+                    )
+                }
+            }
+            FloatingActionButton(onClick = {
+                if (searchExpanded) {
+                    searchExpanded = false
+                    searchQuery = ""
+                    focusManager.clearFocus()
+                } else {
+                    menuExpanded = !menuExpanded
+                }
+            }) {
+                Icon(
+                    if (menuExpanded || searchExpanded) Icons.Default.Close else Icons.Default.Add,
+                    contentDescription = stringResource(
+                        if (menuExpanded || searchExpanded) R.string.apikeys_search_close else R.string.apikeys_actions_open
+                    )
+                )
+            }
+        }
+    }
+
     // Add dialog
     if (showAddDialog) {
         var addPlatform by remember { mutableStateOf(knownPlatforms[0]) }
