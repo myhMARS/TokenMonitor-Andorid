@@ -1,6 +1,7 @@
 package com.tokenmonitor.app.ui.screen
 
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.pager.HorizontalPager
@@ -52,6 +53,7 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -62,6 +64,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -77,6 +80,7 @@ import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.graphics.ColorFilter
@@ -84,11 +88,18 @@ import coil.compose.AsyncImage
 import coil.decode.SvgDecoder
 import coil.request.ImageRequest
 import com.tokenmonitor.app.R
+import com.tokenmonitor.app.data.model.ClientHealthEntry
 import com.tokenmonitor.app.data.model.DeviceRecord
+import com.tokenmonitor.app.data.model.HistoryBucket
 import com.tokenmonitor.app.data.model.HistoryDay
+import com.tokenmonitor.app.data.model.HubBuild
 import com.tokenmonitor.app.data.model.HistoryResponse
 import com.tokenmonitor.app.data.model.LimitProvider
+import com.tokenmonitor.app.data.model.LimitWindow
+import com.tokenmonitor.app.data.model.PeriodWindows
+import com.tokenmonitor.app.data.model.UsageSummary
 import com.tokenmonitor.app.data.model.SessionInfo
+import com.tokenmonitor.app.data.model.SubscriptionRecord
 import com.tokenmonitor.app.data.model.UsagePeriod
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
@@ -109,8 +120,20 @@ fun DashboardScreen(
     sessions: List<SessionInfo>,
     history: HistoryResponse?,
     deviceCount: Int,
+    subscriptions: List<SubscriptionRecord> = emptyList(),
+    subscriptionsUpdatedAt: String = "",
+    subscriptionsLoading: Boolean = false,
+    projectsIncomplete: Boolean = false,
+    modelAliases: Map<String, String> = emptyMap(),
+    modelAliasGrouping: String = "off",
+    isStreamConnected: Boolean = false,
     hubVersion: Int,
     hubNow: String,
+    hubRole: String = "",
+    hubRuntime: String? = null,
+    hubBuild: HubBuild? = null,
+    staleAfterMs: Long? = null,
+    periodWindows: PeriodWindows? = null,
     selectedTab: Int,
     isRefreshing: Boolean = false,
     deletingDeviceId: String? = null,
@@ -118,6 +141,9 @@ fun DashboardScreen(
     onRefresh: () -> Unit,
     onDisconnect: () -> Unit,
     onDeleteDevice: (String) -> Unit,
+    onSaveSubscription: (SubscriptionRecord) -> Unit = {},
+    onDeleteSubscription: (String) -> Unit = {},
+    onRefreshSubscriptions: () -> Unit = {},
     onClearSnackbar: () -> Unit = {},
     onSwitchLanguage: (() -> Unit)? = null,
     importedApiData: String? = null,
@@ -126,10 +152,16 @@ fun DashboardScreen(
     localeKey: Int = 0,
 ) {
     val tabResIds = remember {
-        listOf(R.string.tab_overview, R.string.tab_quota, R.string.tab_devices,
-            R.string.tab_models, R.string.tab_tools, R.string.tab_sessions,
-            R.string.tab_trends, R.string.tab_api_keys)
+        listOf(R.string.tab_overview, R.string.tab_quota, R.string.tab_subscriptions,
+            R.string.tab_projects, R.string.tab_devices, R.string.tab_models,
+            R.string.tab_tools, R.string.tab_sessions, R.string.tab_trends,
+            R.string.tab_api_keys)
     }
+
+    val aliasResolver = remember(modelAliases, modelAliasGrouping, allTime) {
+        buildModelAliasResolver(modelAliases, allTime?.models?.keys.orEmpty(), modelAliasGrouping)
+    }
+    SideEffect { ModelAliasRegistry.resolver = aliasResolver }
 
     var keyMenuExpanded by remember { mutableStateOf(false) }
     var keyAction by remember { mutableStateOf<String?>(null) }
@@ -202,6 +234,15 @@ fun DashboardScreen(
                     }
                 },
                 actions = {
+                    Icon(
+                        Icons.Default.Cloud,
+                        contentDescription = stringResource(
+                            if (isStreamConnected) R.string.stream_live else R.string.stream_reconnecting
+                        ),
+                        tint = if (isStreamConnected) Color(0xFF4CAF50) else MaterialTheme.colorScheme.error,
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Spacer(modifier = Modifier.width(4.dp))
                     Box {
                         IconButton(onClick = { keyMenuExpanded = true }) {
                             Icon(Icons.Default.MoreVert, contentDescription = stringResource(R.string.menu_more))
@@ -277,14 +318,23 @@ fun DashboardScreen(
                 beyondViewportPageCount = 1
             ) { page ->
                 when (page) {
-                    0 -> OverviewTab(today, month, allTime, hubVersion, hubNow)
+                    0 -> OverviewTab(today, month, allTime, hubVersion, hubNow, hubRuntime, hubBuild, staleAfterMs, periodWindows)
                     1 -> QuotaTab(limits, today)
-                    2 -> DevicesTab(devices, deletingDeviceId, onDeleteDevice)
-                    3 -> ModelsTab(allTime)
-                    4 -> ToolsTab(allTime)
-                    5 -> SessionsTab(sessions)
-                    6 -> TrendsTab(history)
-                    7 -> ApiKeysTab(keyAction = keyAction, onKeyActionHandled = { keyAction = null }, importedData = importedApiData, onExportData = onExportData)
+                    2 -> SubscriptionsTab(
+                        subscriptions = subscriptions,
+                        updatedAt = subscriptionsUpdatedAt,
+                        isLoading = subscriptionsLoading,
+                        onSave = onSaveSubscription,
+                        onDelete = onDeleteSubscription,
+                        onRefresh = onRefreshSubscriptions
+                    )
+                    3 -> ProjectsTab(today, month, allTime, projectsIncomplete)
+                    4 -> DevicesTab(devices, deletingDeviceId, onDeleteDevice)
+                    5 -> ModelsTab(allTime)
+                    6 -> ToolsTab(allTime)
+                    7 -> SessionsTab(sessions)
+                    8 -> TrendsTab(history)
+                    9 -> ApiKeysTab(keyAction = keyAction, onKeyActionHandled = { keyAction = null }, importedData = importedApiData, onExportData = onExportData)
                 }
             }
         }
@@ -292,7 +342,17 @@ fun DashboardScreen(
 }
 
 @Composable
-fun OverviewTab(today: UsagePeriod?, month: UsagePeriod?, allTime: UsagePeriod?, hubVersion: Int, hubNow: String) {
+fun OverviewTab(
+    today: UsagePeriod?,
+    month: UsagePeriod?,
+    allTime: UsagePeriod?,
+    hubVersion: Int,
+    hubNow: String,
+    hubRuntime: String? = null,
+    hubBuild: HubBuild? = null,
+    staleAfterMs: Long? = null,
+    periodWindows: PeriodWindows? = null
+) {
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
         contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp),
@@ -302,31 +362,16 @@ fun OverviewTab(today: UsagePeriod?, month: UsagePeriod?, allTime: UsagePeriod?,
         item { PeriodCard(stringResource(R.string.period_month), month, MaterialTheme.colorScheme.tertiary) }
         item { PeriodCard(stringResource(R.string.period_all_time), allTime, MaterialTheme.colorScheme.secondary) }
 
-        if (hubVersion > 0 || hubNow.isNotBlank()) {
+        if (hubVersion > 0 || hubNow.isNotBlank() || hubBuild != null) {
             item {
-                Card(modifier = Modifier.fillMaxWidth()) {
-                    Row(
-                        modifier = Modifier.padding(12.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(Icons.Default.Speed, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(16.dp))
-                        Spacer(modifier = Modifier.width(8.dp))
-                        if (hubVersion > 0) {
-                            Text(
-                                text = stringResource(R.string.overview_hub_version, hubVersion),
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                            Spacer(modifier = Modifier.width(8.dp))
-                        }
-                        Text(
-                            text = hubNow.take(16).replace("T", " "),
-                            style = MaterialTheme.typography.labelSmall,
-                            fontWeight = FontWeight.Medium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                }
+                HubStatusCard(
+                    hubVersion = hubVersion,
+                    hubNow = hubNow,
+                    hubRuntime = hubRuntime,
+                    hubBuild = hubBuild,
+                    staleAfterMs = staleAfterMs,
+                    periodWindows = periodWindows
+                )
             }
         }
 
@@ -336,14 +381,100 @@ fun OverviewTab(today: UsagePeriod?, month: UsagePeriod?, allTime: UsagePeriod?,
                     Column(modifier = Modifier.padding(16.dp)) {
                         Text(stringResource(R.string.overview_model_usage), style = MaterialTheme.typography.titleSmall)
                         Spacer(modifier = Modifier.height(8.dp))
-                        today.models.entries.sortedByDescending { it.value }.take(10).forEach { (model, tokens) ->
-                            ModelUsageRow(model, tokens, today.modelCosts?.get(model))
+                        val groupedModels = ModelAliasRegistry.groupModels(today.models)
+                        val groupedCosts = ModelAliasRegistry.groupCosts(today.models, today.modelCosts)
+                        groupedModels.entries.sortedByDescending { it.value }.take(10).forEach { (model, tokens) ->
+                            ModelUsageRow(model, tokens, groupedCosts[model])
                         }
                     }
                 }
             }
         }
     }
+}
+
+@Composable
+private fun HubStatusCard(
+    hubVersion: Int,
+    hubNow: String,
+    hubRuntime: String?,
+    hubBuild: HubBuild?,
+    staleAfterMs: Long?,
+    periodWindows: PeriodWindows?
+) {
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Column(
+            modifier = Modifier.padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Default.Speed, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(16.dp))
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    hubRuntimeLabel(hubRuntime, hubVersion),
+                    style = MaterialTheme.typography.labelSmall,
+                    fontWeight = FontWeight.Medium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(modifier = Modifier.weight(1f))
+                if (hubNow.isNotBlank()) {
+                    Text(
+                        formatDateTime(hubNow),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+            if (hubBuild != null) {
+                val core = shortBuildId(hubBuild.coreBuildId)
+                val runtime = shortBuildId(hubBuild.runtimeBuildId)
+                if (core != null || runtime != null) {
+                    Text(
+                        stringResource(R.string.overview_build_format, core ?: "-", runtime ?: "-"),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+            periodWindows?.today?.endsAt?.takeIf { it.isNotBlank() }?.let { endsAt ->
+                val zone = periodWindows.timeZone?.takeIf { it.isNotBlank() }
+                Text(
+                    if (zone != null) stringResource(R.string.overview_today_ends_tz_format, formatDateTime(endsAt), zone)
+                    else stringResource(R.string.overview_today_ends_format, formatDateTime(endsAt)),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            staleAfterMs?.takeIf { it > 0 }?.let { threshold ->
+                Text(
+                    stringResource(R.string.overview_stale_after_format, threshold / 60000),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun hubRuntimeLabel(runtime: String?, version: Int): String = when (runtime?.lowercase()) {
+    "node-hub" -> stringResource(R.string.overview_runtime_node)
+    "cloudflare-worker" -> stringResource(R.string.overview_runtime_worker)
+    null, "" -> if (version > 0) stringResource(R.string.overview_hub_version, version) else stringResource(R.string.overview_runtime_unknown)
+    else -> runtime
+}
+
+private fun shortBuildId(buildId: String?): String? {
+    val value = buildId?.removePrefix("sha256:")?.takeIf { it.isNotBlank() } ?: return null
+    return value.take(8)
+}
+
+private fun formatDateTime(isoTime: String): String = try {
+    java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm")
+        .withZone(java.time.ZoneId.systemDefault())
+        .format(Instant.parse(isoTime))
+} catch (_: Exception) {
+    isoTime.take(16).replace("T", " ")
 }
 
 @Composable
@@ -355,7 +486,6 @@ fun PeriodCard(title: String, period: UsagePeriod?, color: Color) {
         Column(modifier = Modifier.padding(12.dp)) {
             Text(title, style = MaterialTheme.typography.titleSmall, color = color)
             Spacer(modifier = Modifier.height(6.dp))
-            // 2x2 grid to avoid cramped layout with large numbers
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -370,7 +500,26 @@ fun PeriodCard(title: String, period: UsagePeriod?, color: Color) {
                 ) {
                     StatItem(stringResource(R.string.stat_output), formatNumber(period?.outputTokens ?: 0), Modifier.weight(1f))
                     StatItem(stringResource(R.string.stat_cache), formatNumber(period?.cacheReadTokens ?: 0), Modifier.weight(1f))
+                    StatItem(stringResource(R.string.stat_cache_write), formatNumber(period?.cacheWriteTokens ?: 0), Modifier.weight(1f))
                 }
+            }
+            val unpriced = period?.unpricedTokens ?: 0
+            val unclassified = period?.unclassifiedTokens ?: 0
+            if (unpriced > 0) {
+                Spacer(modifier = Modifier.height(6.dp))
+                Text(
+                    stringResource(R.string.overview_unpriced_hint, formatNumber(unpriced)),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.tertiary
+                )
+            }
+            if (unclassified > 0) {
+                Spacer(modifier = Modifier.height(2.dp))
+                Text(
+                    stringResource(R.string.overview_unclassified_hint, formatNumber(unclassified)),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
         }
     }
@@ -416,7 +565,17 @@ fun ModelUsageRow(model: String, tokens: Long, cost: Double?) {
 
 @Composable
 fun QuotaTab(limits: List<LimitProvider>, today: UsagePeriod?) {
-    val hasData = limits.isNotEmpty() || today != null
+    // Hubs report every registered provider, including ones this device has not
+    // configured. Those rows carry no window and no balance, so rendering them
+    // would bury the one account that actually has data under dozens of empty
+    // cards. Errors and rate limits stay visible because they are diagnostics.
+    val visibleLimits = limits.filter { provider ->
+        !provider.windows.isNullOrEmpty() ||
+            provider.balance != null ||
+            provider.balanceUsd != null ||
+            (provider.status != "notConfigured" && provider.status != "disabled")
+    }
+    val hasData = visibleLimits.isNotEmpty() || today != null
 
     if (!hasData) {
         Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -434,7 +593,6 @@ fun QuotaTab(limits: List<LimitProvider>, today: UsagePeriod?) {
         contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        // Today's consumption summary
         if (today != null) {
             item {
                 Card(modifier = Modifier.fillMaxWidth()) {
@@ -461,8 +619,7 @@ fun QuotaTab(limits: List<LimitProvider>, today: UsagePeriod?) {
             }
         }
 
-        // Provider balance and limits
-        items(limits) { provider ->
+        items(visibleLimits) { provider ->
             QuotaProviderCard(provider)
         }
     }
@@ -490,211 +647,460 @@ private fun ProgressBar(ratio: Float, color: Color, modifier: Modifier = Modifie
 
 @Composable
 fun QuotaProviderCard(provider: LimitProvider) {
-    val hasWindows = !provider.windows.isNullOrEmpty()
-    val hasBalance = provider.balanceUsd != null || provider.balance != null
+    val windows = provider.windows.orEmpty()
+    val primaryWindows = windows.filter { !it.additional }
+    val additionalWindows = windows.filter { it.additional }
+    val balance = provider.balance
+    val hasBalance = provider.balanceUsd != null || balance != null
 
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(modifier = Modifier.padding(16.dp)) {
-            // Header
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(
                     Icons.Default.Cloud,
                     contentDescription = null,
                     modifier = Modifier.size(20.dp),
-                    tint = when (provider.status) {
-                        "warning" -> Color(0xFFFFA726)
-                        "error" -> Color(0xFFEF5350)
-                        else -> Color(0xFF66BB6A)
-                    }
+                    tint = statusColor(provider.status)
                 )
                 Spacer(modifier = Modifier.width(8.dp))
-                Text(
-                    provider.provider.replaceFirstChar { it.uppercase() },
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.Bold,
-                    modifier = Modifier.weight(1f)
-                )
-                provider.accountLabel?.let { label ->
-                    Card(
-                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
-                    ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        providerLabel(provider.provider),
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.Bold
+                    )
+                    val account = provider.accountName?.takeIf { it.isNotBlank() }
+                        ?: provider.accountEmail?.takeIf { it.isNotBlank() }
+                    if (account != null) {
                         Text(
-                            label,
-                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
-                            style = MaterialTheme.typography.labelSmall
+                            account,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
                         )
                     }
                 }
+                val plan = provider.planLabel?.takeIf { it.isNotBlank() }
+                    ?: provider.accountLabel?.takeIf { it.isNotBlank() }
+                if (plan != null) PlanBadge(plan)
             }
 
-            // Balance progress bars
-            if (hasBalance) {
-                Spacer(modifier = Modifier.height(12.dp))
-                HorizontalDivider()
-                Spacer(modifier = Modifier.height(12.dp))
-                Text(stringResource(R.string.quota_balance), style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
-                Spacer(modifier = Modifier.height(8.dp))
-
-                provider.balanceUsd?.let { usd ->
-                    val estimatedMonthly = usd.coerceAtLeast(0.01) // prevent divide by zero for ratio
-                    val ratio = ((usd / estimatedMonthly)).toFloat().coerceIn(0f, 1f)
-                    Column {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Text(stringResource(R.string.quota_prepaid_usd), style = MaterialTheme.typography.bodySmall)
-                            Text(formatCost(usd), style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold,
-                                color = if (usd > 0) Color(0xFF4CAF50) else Color(0xFFEF5350))
-                        }
-                        Spacer(modifier = Modifier.height(4.dp))
-                        ProgressBar(
-                            ratio = ratio,
-                            color = if (usd > 0) Color(0xFF4CAF50) else Color(0xFFEF5350),
-                            modifier = Modifier.fillMaxWidth().height(8.dp)
-                        )
-                    }
-                }
-
-                provider.balance?.let { bal ->
-                    Spacer(modifier = Modifier.height(8.dp))
-                    // Show balance amount + today/month spend as progress
-                    Column {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Text(stringResource(R.string.quota_balance_format, bal.currency), style = MaterialTheme.typography.bodySmall)
-                            Text(String.format(Locale.US, "%.2f", bal.amount), style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold)
-                        }
-                        Spacer(modifier = Modifier.height(4.dp))
-                        ProgressBar(
-                            ratio = 1f,
-                            color = Color(0xFF4CAF50),
-                            modifier = Modifier.fillMaxWidth().height(8.dp)
-                        )
-                    }
-                    bal.todaySpend?.let { todaySpend ->
-                        Spacer(modifier = Modifier.height(6.dp))
-                        val spendRatio = (todaySpend / bal.amount.coerceAtLeast(0.001)).toFloat().coerceIn(0f, 1f)
-                        Column {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween
-                            ) {
-                                Text(stringResource(R.string.quota_today_spend), style = MaterialTheme.typography.bodySmall)
-                                Text("${String.format(Locale.US, "%.2f", todaySpend)} ${bal.currency}", style = MaterialTheme.typography.bodySmall,
-                                    color = if (spendRatio > 0.8f) Color(0xFFEF5350) else MaterialTheme.colorScheme.onSurface)
-                            }
-                            Spacer(modifier = Modifier.height(4.dp))
-                            ProgressBar(
-                                ratio = spendRatio,
-                                color = when {
-                                    spendRatio > 0.8f -> Color(0xFFEF5350)
-                                    spendRatio > 0.5f -> Color(0xFFFFA726)
-                                    else -> Color(0xFF42A5F5)
-                                },
-                                modifier = Modifier.fillMaxWidth().height(6.dp)
-                            )
-                        }
-                    }
-                    bal.monthSpend?.let { monthSpend ->
-                        Spacer(modifier = Modifier.height(6.dp))
-                        val monthRatio = (monthSpend / bal.amount.coerceAtLeast(0.01)).toFloat().coerceIn(0f, 1f)
-                        Column {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween
-                            ) {
-                                Text(
-                                    stringResource(R.string.quota_month_spend) + if (bal.monthSinceTracking == true) "" else "*",
-                                    style = MaterialTheme.typography.bodySmall
-                                )
-                                Text("${String.format(Locale.US, "%.2f", monthSpend)} ${bal.currency}", style = MaterialTheme.typography.bodySmall,
-                                    color = if (monthRatio > 0.8f) Color(0xFFEF5350) else MaterialTheme.colorScheme.onSurface)
-                            }
-                            Spacer(modifier = Modifier.height(4.dp))
-                            ProgressBar(
-                                ratio = monthRatio,
-                                color = when {
-                                    monthRatio > 0.8f -> Color(0xFFEF5350)
-                                    monthRatio > 0.5f -> Color(0xFFFFA726)
-                                    else -> Color(0xFF42A5F5)
-                                },
-                                modifier = Modifier.fillMaxWidth().height(6.dp)
-                            )
-                        }
-                    }
-                }
+            providerStatusLabel(provider.status)?.let { status ->
+                Spacer(modifier = Modifier.height(6.dp))
+                Text(status, style = MaterialTheme.typography.labelSmall, color = statusColor(provider.status))
             }
 
-            // Rate limit windows
-            if (hasWindows) {
+            when (provider.actionRequired) {
+                "accountVerification" -> QuotaHint(stringResource(R.string.quota_action_verification))
+                "appSessionEncrypted" -> QuotaHint(stringResource(R.string.quota_action_encrypted))
+            }
+
+            if (hasBalance) BalanceSection(provider)
+
+            if (primaryWindows.isNotEmpty()) {
                 if (hasBalance) {
                     Spacer(modifier = Modifier.height(12.dp))
                     HorizontalDivider()
                 }
                 Spacer(modifier = Modifier.height(12.dp))
-                Text(stringResource(R.string.quota_rate_limits), style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.tertiary)
-                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    stringResource(R.string.quota_rate_limits),
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.tertiary
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                primaryWindows.forEach { LimitWindowRow(it) }
+            }
 
-                provider.windows.forEach { window ->
-                    Column(modifier = Modifier.padding(vertical = 6.dp)) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Text(
-                                window.kind.replaceFirstChar { it.uppercase() },
-                                style = MaterialTheme.typography.bodySmall,
-                                fontWeight = FontWeight.Medium
-                            )
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Text(
-                                    "${stringResource(R.string.quota_used_format, window.usedPercent)}  ",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = when {
-                                        window.usedPercent > 80 -> Color(0xFFEF5350)
-                                        window.usedPercent > 50 -> Color(0xFFFFA726)
-                                        else -> MaterialTheme.colorScheme.onSurfaceVariant
-                                    }
-                                )
-                                Text(
-                                    stringResource(R.string.quota_left_format, window.remainingPercent),
-                                    style = MaterialTheme.typography.labelSmall,
-                                    fontWeight = FontWeight.Bold,
-                                    color = when {
-                                        window.remainingPercent < 20 -> Color(0xFFEF5350)
-                                        window.remainingPercent < 50 -> Color(0xFFFFA726)
-                                        else -> Color(0xFF4CAF50)
-                                    }
-                                )
-                            }
-                        }
-                        Spacer(modifier = Modifier.height(6.dp))
-                        ProgressBar(
-                            ratio = (window.usedPercent / 100.0).toFloat().coerceIn(0f, 1f),
-                            color = when {
-                                window.usedPercent > 80 -> Color(0xFFEF5350)
-                                window.usedPercent > 50 -> Color(0xFFFFA726)
-                                else -> Color(0xFF66BB6A)
-                            },
-                            modifier = Modifier.fillMaxWidth().height(12.dp)
-                        )
-                        window.resetsAt?.let { resetTime ->
-                            Spacer(modifier = Modifier.height(2.dp))
-                            Text(
-                                stringResource(R.string.quota_resets_format, formatTime(resetTime, LocalContext.current)),
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                    }
-                }
+            if (additionalWindows.isNotEmpty()) {
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    stringResource(R.string.quota_additional_limits),
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                additionalWindows.forEach { LimitWindowRow(it) }
+            }
+
+            provider.usageSummary?.let { UsageSummarySection(it) }
+
+            provider.updatedAt?.takeIf { it.isNotBlank() }?.let { updated ->
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    stringResource(R.string.quota_updated_format, formatTime(updated, LocalContext.current)),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
         }
     }
 }
+
+@Composable
+private fun PlanBadge(text: String) {
+    Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
+        Text(
+            text,
+            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+            style = MaterialTheme.typography.labelSmall
+        )
+    }
+}
+
+@Composable
+private fun QuotaHint(text: String) {
+    Spacer(modifier = Modifier.height(8.dp))
+    Text(text, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+}
+
+@Composable
+private fun LimitWindowRow(window: LimitWindow) {
+    val currency = window.currency
+    val label = window.label?.takeIf { it.isNotBlank() } ?: windowKindLabel(window.kind)
+    val usedPercent = window.usedPercent
+    val remainingPercent = window.remainingPercent
+    val consumedRatio = when {
+        usedPercent != null -> (usedPercent / 100.0).coerceIn(0.0, 1.0)
+        window.used != null && window.limit != null && window.limit > 0 ->
+            (window.used / window.limit).coerceIn(0.0, 1.0)
+        else -> null
+    }
+    val percentText = when {
+        usedPercent != null && remainingPercent != null ->
+            stringResource(R.string.quota_used_left_format, usedPercent, remainingPercent)
+        usedPercent != null -> stringResource(R.string.quota_used_format, usedPercent)
+        remainingPercent != null -> stringResource(R.string.quota_left_format, remainingPercent)
+        else -> null
+    }
+    val amountText = when {
+        window.used != null && window.limit != null ->
+            stringResource(R.string.quota_used_of_limit_format, formatMoney(window.used, currency), formatMoney(window.limit, currency))
+        window.remaining != null -> stringResource(R.string.quota_remaining_format, formatMoney(window.remaining, currency))
+        window.used != null -> stringResource(R.string.quota_used_amount_format, formatMoney(window.used, currency))
+        else -> null
+    }
+
+    Column(modifier = Modifier.padding(vertical = 6.dp)) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(label, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Medium)
+                window.detail?.takeIf { it.isNotBlank() }?.let { detail ->
+                    Text(detail, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+            Column(horizontalAlignment = Alignment.End) {
+                percentText?.let { text ->
+                    Text(
+                        text,
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = consumedRatio?.let { ratioColor(it) } ?: MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                amountText?.let { text ->
+                    Text(text, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+        }
+        if (window.showMeter && consumedRatio != null) {
+            Spacer(modifier = Modifier.height(6.dp))
+            ProgressBar(
+                ratio = consumedRatio.toFloat(),
+                color = ratioColor(consumedRatio),
+                modifier = Modifier.fillMaxWidth().height(12.dp)
+            )
+        }
+        window.resetsAt?.takeIf { it.isNotBlank() }?.let { resetTime ->
+            Spacer(modifier = Modifier.height(2.dp))
+            Text(
+                boundaryText(window.boundaryKind, formatTime(resetTime, LocalContext.current)),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+    }
+}
+
+@Composable
+private fun BalanceSection(provider: LimitProvider) {
+    val balance = provider.balance
+
+    Spacer(modifier = Modifier.height(12.dp))
+    HorizontalDivider()
+    Spacer(modifier = Modifier.height(12.dp))
+    Text(
+        stringResource(R.string.quota_balance),
+        style = MaterialTheme.typography.labelMedium,
+        fontWeight = FontWeight.Bold,
+        color = MaterialTheme.colorScheme.primary
+    )
+
+    if (balance != null) {
+        val currency = balance.currency
+        balance.amount?.let { amount ->
+            Spacer(modifier = Modifier.height(8.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                val currencyLabel = currency?.takeIf { it.isNotBlank() }
+                Text(
+                    if (currencyLabel != null) stringResource(R.string.quota_balance_format, currencyLabel)
+                    else stringResource(R.string.quota_balance),
+                    style = MaterialTheme.typography.bodySmall
+                )
+                Text(
+                    formatMoney(amount, currency),
+                    style = MaterialTheme.typography.bodySmall,
+                    fontWeight = FontWeight.Bold,
+                    color = if (amount > 0) Color(0xFF4CAF50) else Color(0xFFEF5350)
+                )
+            }
+            val monthSpend = balance.monthSpend
+            if (monthSpend != null && monthSpend > 0 && amount >= 0) {
+                // Display-only wallet meter: balance / (balance + month spend).
+                val ratio = (amount / (amount + monthSpend)).coerceIn(0.0, 1.0)
+                Spacer(modifier = Modifier.height(4.dp))
+                ProgressBar(
+                    ratio = ratio.toFloat(),
+                    color = ratioColor(1.0 - ratio),
+                    modifier = Modifier.fillMaxWidth().height(8.dp)
+                )
+            }
+        }
+
+        if (balance.planStatus == "expired") {
+            Spacer(modifier = Modifier.height(6.dp))
+            Text(
+                stringResource(R.string.quota_plan_expired),
+                style = MaterialTheme.typography.labelSmall,
+                fontWeight = FontWeight.Bold,
+                color = Color(0xFFEF5350)
+            )
+        }
+
+        if (balance.planUsed != null && balance.planLimit != null) {
+            Spacer(modifier = Modifier.height(6.dp))
+            Text(
+                stringResource(
+                    R.string.quota_plan_usage_format,
+                    formatMoney(balance.planUsed, currency),
+                    formatMoney(balance.planLimit, currency)
+                ),
+                style = MaterialTheme.typography.bodySmall
+            )
+            balance.planPercent?.let { percent ->
+                Spacer(modifier = Modifier.height(4.dp))
+                val ratio = (percent / 100.0).coerceIn(0.0, 1.0)
+                ProgressBar(
+                    ratio = ratio.toFloat(),
+                    color = ratioColor(ratio),
+                    modifier = Modifier.fillMaxWidth().height(8.dp)
+                )
+            }
+        }
+
+        balance.todaySpend?.let { SpendRow(stringResource(R.string.quota_today_spend), it, currency) }
+        balance.weekSpend?.let { SpendRow(stringResource(R.string.quota_week_spend), it, currency) }
+        balance.monthSpend?.let {
+            val label = stringResource(R.string.quota_month_spend) +
+                if (balance.monthSinceTracking == true) "" else "*"
+            SpendRow(label, it, currency)
+        }
+        balance.allTimeSpend?.let { SpendRow(stringResource(R.string.quota_all_time_spend), it, currency) }
+        balance.giftBalance?.let { SpendRow(stringResource(R.string.quota_gift_balance), it, currency) }
+        balance.cashBalance?.let { SpendRow(stringResource(R.string.quota_cash_balance), it, currency) }
+        balance.requestCount?.let { count ->
+            Text(
+                stringResource(R.string.quota_requests_format, count),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+        balance.expiresAt?.takeIf { it.isNotBlank() }?.let { expires ->
+            Text(
+                stringResource(R.string.quota_expires_on_format, formatTime(expires, LocalContext.current)),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+        balance.tranches?.forEach { tranche ->
+            val trancheCurrency = tranche.currency ?: currency
+            val expiresText = tranche.expiresAt?.takeIf { it.isNotBlank() }?.let {
+                stringResource(R.string.quota_expires_on_format, formatTime(it, LocalContext.current))
+            }
+            val text = buildString {
+                append("+ ")
+                append(formatMoney(tranche.amount, trancheCurrency))
+                if (expiresText != null) {
+                    append(" · ")
+                    append(expiresText)
+                }
+            }
+            Text(text, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
+
+    provider.balanceUsd?.let { usd ->
+        SpendRow(stringResource(R.string.quota_prepaid_usd), usd, "USD")
+    }
+}
+
+@Composable
+private fun SpendRow(label: String, value: Double, currency: String?) {
+    Spacer(modifier = Modifier.height(6.dp))
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween
+    ) {
+        Text(label, style = MaterialTheme.typography.bodySmall)
+        Text(formatMoney(value, currency), style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Medium)
+    }
+}
+
+@Composable
+private fun UsageSummarySection(summary: UsageSummary) {
+    Spacer(modifier = Modifier.height(12.dp))
+    HorizontalDivider()
+    Spacer(modifier = Modifier.height(12.dp))
+    Text(
+        stringResource(R.string.quota_account_usage),
+        style = MaterialTheme.typography.labelMedium,
+        fontWeight = FontWeight.Bold,
+        color = MaterialTheme.colorScheme.primary
+    )
+    val periodLabel = when (summary.period) {
+        "today" -> stringResource(R.string.period_today)
+        "week" -> stringResource(R.string.period_week)
+        "month" -> stringResource(R.string.period_month)
+        "allTime" -> stringResource(R.string.period_all_time)
+        else -> null
+    }
+    if (periodLabel != null) {
+        Text(periodLabel, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+    summary.requests?.let { SummaryRow(stringResource(R.string.quota_requests_label), formatNumber(it)) }
+    summary.totalTokens?.let { SummaryRow(stringResource(R.string.stat_tokens), formatNumber(it)) }
+    summary.inputTokens?.let { SummaryRow(stringResource(R.string.session_input), formatNumber(it)) }
+    summary.outputTokens?.let { SummaryRow(stringResource(R.string.session_output), formatNumber(it)) }
+    summary.cacheReadTokens?.let { SummaryRow(stringResource(R.string.session_cache_read), formatNumber(it)) }
+    summary.cacheCreationTokens?.let { SummaryRow(stringResource(R.string.session_cache_write), formatNumber(it)) }
+    summary.standardCost?.let { SummaryRow(stringResource(R.string.quota_standard_cost), formatCost(it)) }
+    summary.actualCost?.let { SummaryRow(stringResource(R.string.quota_actual_cost), formatCost(it)) }
+    summary.averageDurationMs?.let {
+        SummaryRow(stringResource(R.string.quota_avg_duration), stringResource(R.string.quota_ms_format, it))
+    }
+}
+
+@Composable
+private fun SummaryRow(label: String, value: String) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween
+    ) {
+        Text(label, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(value, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Medium)
+    }
+}
+
+@Composable
+private fun boundaryText(boundaryKind: String?, time: String): String = when (boundaryKind) {
+    "expiry" -> stringResource(R.string.quota_expires_format, time)
+    "mixed" -> stringResource(R.string.quota_resets_expires_format, time)
+    else -> stringResource(R.string.quota_resets_format, time)
+}
+
+@Composable
+private fun windowKindLabel(kind: String): String = when (kind) {
+    "session" -> stringResource(R.string.quota_window_session)
+    "daily" -> stringResource(R.string.quota_window_daily)
+    "weekly" -> stringResource(R.string.quota_window_weekly)
+    "billing" -> stringResource(R.string.quota_window_billing)
+    "credits" -> stringResource(R.string.quota_window_credits)
+    else -> kind.replaceFirstChar { it.uppercase() }
+}
+
+@Composable
+private fun providerStatusLabel(status: String): String? = when (status) {
+    "", "ok" -> null
+    "rateLimited" -> stringResource(R.string.quota_status_rate_limited)
+    "sourceRateLimited" -> stringResource(R.string.quota_status_source_rate_limited)
+    "unauthorized" -> stringResource(R.string.quota_status_unauthorized)
+    "unavailable" -> stringResource(R.string.quota_status_unavailable)
+    "error" -> stringResource(R.string.quota_status_error)
+    "notConfigured" -> stringResource(R.string.quota_status_not_configured)
+    "disabled" -> stringResource(R.string.quota_status_disabled)
+    else -> status.replaceFirstChar { it.uppercase() }
+}
+
+private fun statusColor(status: String): Color = when (status) {
+    "warning", "rateLimited", "sourceRateLimited" -> Color(0xFFFFA726)
+    "error", "unauthorized", "unavailable" -> Color(0xFFEF5350)
+    "notConfigured", "disabled" -> Color(0xFF9E9E9E)
+    else -> Color(0xFF66BB6A)
+}
+
+private fun ratioColor(ratio: Double): Color = when {
+    ratio >= 0.8 -> Color(0xFFEF5350)
+    ratio >= 0.5 -> Color(0xFFFFA726)
+    else -> Color(0xFF66BB6A)
+}
+
+internal fun providerLabel(id: String): String = PROVIDER_LABELS[id] ?: id.replaceFirstChar { it.uppercase() }
+
+private val PROVIDER_LABELS = mapOf(
+    "claude" to "Claude",
+    "codex" to "Codex",
+    "opencode" to "OpenCode",
+    "cursor" to "Cursor",
+    "antigravity" to "Antigravity",
+    "cline" to "Cline",
+    "factory" to "Factory Droid",
+    "kimi" to "Kimi",
+    "grok" to "Grok",
+    "copilot" to "GitHub Copilot",
+    "zed" to "Zed",
+    "commandcode" to "Command Code",
+    "mimo" to "Xiaomi MiMo",
+    "zai" to "GLM",
+    "zaiteam" to "GLM Team",
+    "kiro" to "Kiro",
+    "workbuddy" to "WorkBuddy",
+    "qoder" to "Qoder",
+    "deepseek" to "DeepSeek",
+    "devin" to "Devin",
+    "minimax" to "Minimax",
+    "typesafe" to "TypeSafe",
+    "openrouter" to "OpenRouter",
+    "volcengine" to "Volcengine",
+    "ollama" to "Ollama",
+    "trae" to "Trae CN",
+    "alibaba" to "Alibaba Cloud",
+    "stepfun" to "StepFun",
+    "notion" to "Notion AI",
+    "thirdparty" to "Third-party APIs"
+)
+
+private fun formatMoney(value: Double, currency: String?): String {
+    val code = currency?.trim()?.uppercase(Locale.US).orEmpty()
+    return when {
+        code.isEmpty() || code == "USD" -> formatCost(value)
+        code == "CREDITS" -> "${formatAmount(value)} Credits"
+        else -> "$code ${formatAmount(value)}"
+    }
+}
+
+private fun formatAmount(value: Double): String =
+    if (value == value.toLong().toDouble()) value.toLong().toString()
+    else String.format(Locale.US, "%.2f", value)
 
 @Composable
 fun DevicesTab(devices: List<DeviceRecord>, deletingDeviceId: String?, onDeleteDevice: (String) -> Unit) {
@@ -724,24 +1130,55 @@ fun DevicesTab(devices: List<DeviceRecord>, deletingDeviceId: String?, onDeleteD
 fun DeviceCard(device: DeviceRecord, isDeleting: Boolean = false, onDeleteDevice: (String) -> Unit) {
     var showDetail by remember { mutableStateOf(false) }
     var showDeleteConfirm by remember { mutableStateOf(false) }
+    val name = deviceDisplayName(device)
+    val osLabel = deviceOsLabel(device)
+    val secondary = listOfNotNull(
+        device.hostname?.takeIf { it.isNotBlank() && it != name },
+        osLabel.takeIf { it.isNotBlank() }
+    ).joinToString(" · ")
+    val allTime = device.allTime ?: device.periods?.allTime
 
     Card(modifier = Modifier.fillMaxWidth().clickable { showDetail = true }) {
         Row(
             modifier = Modifier.fillMaxWidth().padding(16.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Icon(Icons.Default.Computer, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+            Icon(
+                Icons.Default.Computer,
+                contentDescription = null,
+                tint = if (device.stale) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
+            )
             Spacer(modifier = Modifier.width(12.dp))
             Column(modifier = Modifier.weight(1f)) {
-                Text(device.deviceId, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
-                device.platform?.let {
-                    Text(it, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(name, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
+                    if (device.stale) {
+                        Spacer(modifier = Modifier.width(6.dp))
+                        StaleBadge()
+                    }
                 }
-                (device.allTime ?: device.periods?.allTime)?.let {
-                    Text(stringResource(R.string.devices_total_format, formatNumber(it.totalTokens), formatCost(it.costUsd)), style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Medium)
+                if (secondary.isNotBlank()) {
+                    Text(
+                        secondary,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+                allTime?.let {
+                    Text(
+                        stringResource(R.string.devices_total_format, formatNumber(it.totalTokens), formatCost(it.costUsd)),
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.Medium
+                    )
                 }
                 device.updatedAt?.let { updated ->
-                    Text(stringResource(R.string.devices_last_seen_format, formatTime(updated, LocalContext.current)), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(
+                        stringResource(R.string.devices_last_seen_format, formatTime(updated, LocalContext.current)),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = if (device.stale) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                 }
             }
             if (isDeleting) {
@@ -754,46 +1191,101 @@ fun DeviceCard(device: DeviceRecord, isDeleting: Boolean = false, onDeleteDevice
         }
     }
 
-    // Detail dialog
     if (showDetail) {
         AlertDialog(
             onDismissRequest = { showDetail = false },
-            title = { Text(device.deviceId) },
+            title = { Text(name) },
             text = {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    val today = device.today ?: device.periods?.today
-                    val month = device.month ?: device.periods?.month
-                    val allTime = device.allTime ?: device.periods?.allTime
-                    today?.let {
-                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                            Text(stringResource(R.string.period_today), style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Medium)
-                            Text("${formatNumber(it.totalTokens)} · ${formatCost(it.costUsd)}", style = MaterialTheme.typography.bodySmall)
+                Column(
+                    modifier = Modifier.verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    SectionTitle(stringResource(R.string.session_stats))
+                    SummaryRow(stringResource(R.string.period_today), devicePeriodSummary(device.today ?: device.periods?.today))
+                    SummaryRow(stringResource(R.string.period_month), devicePeriodSummary(device.month ?: device.periods?.month))
+                    SummaryRow(stringResource(R.string.period_all_time), devicePeriodSummary(allTime))
+
+                    val infoRows = buildList<Pair<String, String>> {
+                        device.hostname?.takeIf { it.isNotBlank() && it != name }?.let {
+                            add(stringResource(R.string.devices_host_label) to it)
+                        }
+                        osLabel.takeIf { it.isNotBlank() }?.let {
+                            add(stringResource(R.string.devices_os_label) to it)
+                        }
+                        device.platform?.takeIf { it.isNotBlank() && it != osLabel }?.let {
+                            add(stringResource(R.string.devices_platform_label) to it)
+                        }
+                        device.agentVersion?.takeIf { it.isNotBlank() }?.let { version ->
+                            val runtime = device.agentRuntime?.takeIf { it.isNotBlank() }
+                            add(stringResource(R.string.devices_agent_label) to listOfNotNull(version, runtime).joinToString(" · "))
+                        }
+                        device.syncUploadIntervalMs?.takeIf { it > 0 }?.let {
+                            add(stringResource(R.string.devices_upload_interval_label) to stringResource(R.string.devices_upload_interval_format, it / 60000))
+                        }
+                        if (device.stale) add(stringResource(R.string.devices_status_label) to stringResource(R.string.devices_stale))
+                    }
+                    if (infoRows.isNotEmpty()) {
+                        Spacer(modifier = Modifier.height(4.dp))
+                        SectionTitle(stringResource(R.string.devices_info_title))
+                        infoRows.forEach { (label, value) -> SummaryRow(label, value) }
+                    }
+
+                    val clients = allTime?.clients
+                    if (!clients.isNullOrEmpty()) {
+                        Spacer(modifier = Modifier.height(4.dp))
+                        SectionTitle(stringResource(R.string.devices_top_tools))
+                        clients.entries.sortedByDescending { it.value }.take(5).forEach { (client, tokens) ->
+                            Row(
+                                modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                ToolAvatar(client, toolLabel(client), toolColor(client), 18.dp)
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    toolLabel(client),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    modifier = Modifier.weight(1f),
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                                Text(formatNumber(tokens), style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Medium)
+                            }
                         }
                     }
-                    month?.let {
-                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                            Text(stringResource(R.string.period_month), style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Medium)
-                            Text("${formatNumber(it.totalTokens)} · ${formatCost(it.costUsd)}", style = MaterialTheme.typography.bodySmall)
+
+                    val models = allTime?.models
+                    if (!models.isNullOrEmpty()) {
+                        Spacer(modifier = Modifier.height(4.dp))
+                        SectionTitle(stringResource(R.string.devices_top_models))
+                        models.entries.sortedByDescending { it.value }.take(5).forEach { (model, tokens) ->
+                            Row(
+                                modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Text(
+                                    model,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    modifier = Modifier.weight(1f),
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                                Text(formatNumber(tokens), style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Medium)
+                            }
                         }
                     }
-                    allTime?.let {
-                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                            Text(stringResource(R.string.period_all_time), style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Medium)
-                            Text("${formatNumber(it.totalTokens)} · ${formatCost(it.costUsd)}", style = MaterialTheme.typography.bodySmall)
-                        }
-                    }
+
+                    DeviceHealthSection(device)
                 }
             },
             confirmButton = { TextButton(onClick = { showDetail = false }) { Text(stringResource(R.string.session_close)) } }
         )
     }
 
-    // Delete confirmation dialog
     if (showDeleteConfirm) {
         AlertDialog(
             onDismissRequest = { showDeleteConfirm = false },
             title = { Text(stringResource(R.string.device_delete_title)) },
-            text = { Text(stringResource(R.string.device_delete_message, device.deviceId)) },
+            text = { Text(stringResource(R.string.device_delete_message, name)) },
             confirmButton = {
                 TextButton(onClick = {
                     showDeleteConfirm = false
@@ -808,13 +1300,210 @@ fun DeviceCard(device: DeviceRecord, isDeleting: Boolean = false, onDeleteDevice
 }
 
 @Composable
+private fun StaleBadge() {
+    Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer)) {
+        Text(
+            stringResource(R.string.devices_stale),
+            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onErrorContainer
+        )
+    }
+}
+
+@Composable
+private fun SectionTitle(title: String) {
+    Text(
+        title,
+        style = MaterialTheme.typography.labelMedium,
+        fontWeight = FontWeight.Bold,
+        color = MaterialTheme.colorScheme.primary
+    )
+}
+
+@Composable
+private fun DeviceHealthSection(device: DeviceRecord) {
+    val health = device.clientHealth ?: return
+    val entries = health.clients.orEmpty()
+    if (entries.isEmpty()) return
+    // Only attention/waiting rows are expanded. A device that tracks 35 tools
+    // reports "source-missing" for most of them; listing every one turns a
+    // diagnostic into a wall of noise. The counts still account for all of them.
+    val problems = entries.filter {
+        it.value.overall == "attention" || it.value.overall == "waiting"
+    }.entries.sortedWith(compareBy({ healthRank(it.value.overall) }, { it.key }))
+    val healthyCount = entries.count { it.value.overall == "healthy" }
+    val unavailableCount = entries.count { it.value.overall == "unavailable" }
+    val unknownCount = entries.count { it.value.overall == "unknown" }
+
+    Spacer(modifier = Modifier.height(4.dp))
+    SectionTitle(stringResource(R.string.devices_health_title))
+    if (problems.isEmpty() && unavailableCount == 0 && unknownCount == 0) {
+        Text(
+            stringResource(R.string.health_all_healthy),
+            style = MaterialTheme.typography.bodySmall,
+            color = Color(0xFF4CAF50)
+        )
+    } else {
+        problems.take(6).forEach { (client, entry) -> HealthClientRow(client, entry) }
+        if (problems.size > 6) {
+            Text(
+                stringResource(R.string.health_more_format, problems.size - 6),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+        val summary = buildList {
+            if (healthyCount > 0) add(stringResource(R.string.health_healthy_count_format, healthyCount))
+            if (unavailableCount > 0) add(stringResource(R.string.health_unavailable_count_format, unavailableCount))
+            if (unknownCount > 0) add(stringResource(R.string.health_unknown_count_format, unknownCount))
+        }
+        if (summary.isNotEmpty()) {
+            Text(
+                summary.joinToString(" · "),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+    }
+    health.observedAt?.takeIf { it.isNotBlank() }?.let { observed ->
+        Text(
+            stringResource(R.string.quota_updated_format, formatTime(observed, LocalContext.current)),
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+    }
+}
+
+@Composable
+private fun HealthClientRow(client: String, entry: ClientHealthEntry) {
+    Column(modifier = Modifier.padding(vertical = 3.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            ToolAvatar(client, toolLabel(client), toolColor(client), 16.dp)
+            Spacer(modifier = Modifier.width(6.dp))
+            Text(
+                toolLabel(client),
+                style = MaterialTheme.typography.bodySmall,
+                fontWeight = FontWeight.Medium,
+                modifier = Modifier.weight(1f)
+            )
+            Text(
+                healthStateLabel(entry.overall),
+                style = MaterialTheme.typography.labelSmall,
+                fontWeight = FontWeight.Bold,
+                color = healthColor(entry.overall)
+            )
+        }
+        entry.source?.let { source ->
+            if (source.checkedCount > 0) {
+                Text(
+                    stringResource(R.string.health_source_format, source.detectedCount, source.checkedCount),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+        entry.collection?.let { collection ->
+            when (collection.state) {
+                "failed" -> {
+                    Text(
+                        stringResource(R.string.health_collection_failed_format, collection.syncFailureStage ?: "unknown"),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.error
+                    )
+                    collection.lastSuccessAt?.takeIf { it.isNotBlank() }?.let { success ->
+                        Text(
+                            stringResource(R.string.health_last_success_format, formatTime(success, LocalContext.current)),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+                "pending", "idle" -> Text(
+                    stringResource(R.string.health_collection_state_format, collection.state),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+        entry.data?.let { data ->
+            val parts = mutableListOf<String>()
+            if (data.liveTokens > 0) {
+                parts += stringResource(R.string.health_live_tokens_format, formatNumber(data.liveTokens))
+            }
+            data.lastActivityDay?.takeIf { it.isNotBlank() }?.let {
+                parts += stringResource(R.string.health_last_activity_format, it)
+            }
+            if (parts.isNotEmpty()) {
+                Text(
+                    parts.joinToString(" · "),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+        entry.diagnostics?.takeIf { it.isNotEmpty() }?.let { diagnostics ->
+            Text(
+                stringResource(R.string.health_diagnostics_format, diagnostics.joinToString(", ") { it.code }),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+    }
+}
+
+@Composable
+private fun healthStateLabel(state: String): String = when (state) {
+    "healthy" -> stringResource(R.string.health_state_healthy)
+    "waiting" -> stringResource(R.string.health_state_waiting)
+    "attention" -> stringResource(R.string.health_state_attention)
+    "unavailable" -> stringResource(R.string.health_state_unavailable)
+    else -> stringResource(R.string.health_state_unknown)
+}
+
+private fun healthColor(state: String): Color = when (state) {
+    "healthy" -> Color(0xFF4CAF50)
+    "waiting" -> Color(0xFFFFA726)
+    "attention" -> Color(0xFFEF5350)
+    "unavailable" -> Color(0xFF9E9E9E)
+    else -> Color(0xFF9E9E9E)
+}
+
+private fun healthRank(state: String): Int = when (state) {
+    "attention" -> 0
+    "unavailable" -> 1
+    "waiting" -> 2
+    "unknown" -> 3
+    else -> 4
+}
+
+private fun deviceDisplayName(device: DeviceRecord): String =
+    device.deviceId.takeIf { it.isNotBlank() }
+        ?: device.hostname?.takeIf { it.isNotBlank() }
+        ?: "device"
+
+private fun deviceOsLabel(device: DeviceRecord): String {
+    val os = listOfNotNull(
+        device.osName?.takeIf { it.isNotBlank() },
+        device.osVersion?.takeIf { it.isNotBlank() }
+    ).joinToString(" ")
+    return os.ifBlank { device.platform.orEmpty() }
+}
+
+@Composable
+private fun devicePeriodSummary(period: UsagePeriod?): String =
+    if (period == null) stringResource(R.string.session_na)
+    else "${formatNumber(period.totalTokens)} · ${formatCost(period.costUsd)}"
+
+@Composable
 fun ModelsTab(allTime: UsagePeriod?) {
     // Use allTime only — periods are nested (allTime includes month, month includes today),
     // so merging them would double/triple-count token values.
-    val models = allTime?.models ?: emptyMap()
-    val modelCosts = allTime?.modelCosts ?: emptyMap()
-    val modelOutputs = allTime?.modelOutputs ?: emptyMap()
-    val modelCacheReads = allTime?.modelCacheReads ?: emptyMap()
+    val rawModels = allTime?.models ?: emptyMap()
+    val models = ModelAliasRegistry.groupModels(rawModels)
+    val modelCosts = ModelAliasRegistry.groupCosts(rawModels, allTime?.modelCosts)
+    val modelOutputs = ModelAliasRegistry.groupLongs(rawModels, allTime?.modelOutputs)
+    val modelCacheReads = ModelAliasRegistry.groupLongs(rawModels, allTime?.modelCacheReads)
 
     if (models.isEmpty()) {
         Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -953,20 +1642,27 @@ fun ToolsTab(allTime: UsagePeriod?) {
 }
 
 private val TOOL_LABELS = mapOf(
-    "claude" to "Claude Code", "codex" to "Codex", "hermes" to "Hermes",
-    "gemini" to "Gemini", "cursor" to "Cursor", "opencode" to "OpenCode",
-    "openclaw" to "OpenClaw", "antigravity" to "Antigravity", "cline" to "Cline",
-    "kimi" to "Kimi", "qwen" to "Qwen", "grok" to "Grok Build",
-    "copilot" to "GitHub Copilot", "pi" to "Pi", "zed" to "Zed",
-    "kilocode" to "Kilo Code", "micode" to "MiMo Code", "zcode" to "ZCode",
+    "claude" to "Claude Code", "codex" to "Codex", "opencode" to "OpenCode",
+    "hermes" to "Hermes Agent", "openclaw" to "OpenClaw", "cursor" to "Cursor",
+    "antigravity" to "Antigravity", "cline" to "Cline", "amp" to "Amp",
+    "droid" to "Factory Droid", "kimi" to "Kimi", "qwen" to "Qwen",
+    "grok" to "Grok Build", "copilot" to "GitHub Copilot", "pi" to "Pi",
+    "omp" to "Oh My Pi", "goose" to "Goose", "zed" to "Zed",
+    "kilo" to "Kilo", "kilocode" to "Kilo", "commandcode" to "Command Code",
+    "mimo" to "Xiaomi MiMo", "micode" to "Xiaomi MiMo", "muse" to "Muse Code",
+    "zcode" to "ZCode", "kiro" to "Kiro", "codebuddy" to "CodeBuddy",
+    "workbuddy" to "WorkBuddy", "proma" to "Proma", "catpaw" to "CatPaw",
+    "qodercn" to "Qoder CN", "reasonix" to "Reasonix", "dsh" to "DeepSeek Harness",
+    "cherrystudio" to "Cherry Studio", "lmstudio" to "LM Studio",
+    "unsloth" to "Unsloth", "devin" to "Devin", "fx" to "fx",
+    "mcode" to "MiniMax Code", "gemini" to "Gemini",
+    // Limit-provider and model-vendor ids shown by the API Keys tab.
     "openai" to "OpenAI", "anthropic" to "Anthropic", "google" to "Google",
-    "bigmodel" to "BigModel", "zhipu" to "Zhipu GLM",
-    "bailian" to "Ali Bailian", "mimo" to "Xiaomi Mimo", "qwen" to "Qwen",
+    "bigmodel" to "BigModel", "zhipu" to "Zhipu GLM", "bailian" to "Ali Bailian",
     "xai" to "xAI", "mistral" to "Mistral", "cohere" to "Cohere",
     "openrouter" to "OpenRouter", "groq" to "Groq", "together" to "Together",
-    "deepseek" to "DeepSeek", "xai" to "xAI", "meta" to "Meta",
-    "mistral" to "Mistral", "moonshot" to "Moonshot", "zai" to "Z.AI",
-    "cohere" to "Cohere", "xiaomi" to "Xiaomi", "minimax" to "MiniMax"
+    "deepseek" to "DeepSeek", "meta" to "Meta", "moonshot" to "Moonshot",
+    "zai" to "Z.AI", "xiaomi" to "Xiaomi", "minimax" to "MiniMax"
 )
 
 internal val TOOL_COLORS = mapOf(
@@ -979,16 +1675,27 @@ internal val TOOL_COLORS = mapOf(
     "openclaw" to Color(0xFFFF4D4D), "xai" to Color(0xFF000000),
     "meta" to Color(0xFF1D65C1), "mistral" to Color(0xFFFA520F),
     "qwen" to Color(0xFF615CED), "pi" to Color(0xFF000000),
-    "zed" to Color(0xFF4173E7), "kilocode" to Color(0xFFF8F676),
-    "micode" to Color(0xFF000000), "zcode" to Color(0xFF000000),
+    "zed" to Color(0xFF4173E7), "kilo" to Color(0xFFE8B800),
+    "kilocode" to Color(0xFFE8B800), "mimo" to Color(0xFFFF6700),
+    "micode" to Color(0xFFFF6700), "zcode" to Color(0xFF000000),
+    "amp" to Color(0xFFF97316), "droid" to Color(0xFF1F2937),
+    "omp" to Color(0xFF111827), "goose" to Color(0xFFFF6B00),
+    "commandcode" to Color(0xFF5B8DEF), "muse" to Color(0xFF7C3AED),
+    "kiro" to Color(0xFF8B5CF6), "codebuddy" to Color(0xFF2F6BFF),
+    "workbuddy" to Color(0xFF10B981), "proma" to Color(0xFF6366F1),
+    "catpaw" to Color(0xFFF59E0B), "qodercn" to Color(0xFF00A3FF),
+    "reasonix" to Color(0xFF0EA5E9), "dsh" to Color(0xFF4D6BFE),
+    "cherrystudio" to Color(0xFFFF5A5F), "lmstudio" to Color(0xFF6D28D9),
+    "unsloth" to Color(0xFF22C55E), "devin" to Color(0xFF2563EB),
+    "fx" to Color(0xFF64748B), "mcode" to Color(0xFFF23F5D),
     "moonshot" to Color(0xFF16191E), "zai" to Color(0xFF000000),
     "cohere" to Color(0xFF39594D), "xiaomi" to Color(0xFFFF6700),
     "minimax" to Color(0xFFF23F5D),
     "openai" to Color(0xFF49A3B0), "anthropic" to Color(0xFFCC7C5E),
-    "google" to Color(0xFF4285F4), "bigmodel" to Color(0xFF3B7CFF), "zhipu" to Color(0xFF3B7CFF),
-    "bailian" to Color(0xFFFF6A00), "mimo" to Color(0xFFFF6700),
-    "qwen" to Color(0xFF615CED), "openrouter" to Color(0xFF6E40C9),
-    "groq" to Color(0xFFF86624), "together" to Color(0xFF0F9AF0),
+    "google" to Color(0xFF4285F4), "bigmodel" to Color(0xFF3B7CFF),
+    "zhipu" to Color(0xFF3B7CFF), "bailian" to Color(0xFFFF6A00),
+    "openrouter" to Color(0xFF6E40C9), "groq" to Color(0xFFF86624),
+    "together" to Color(0xFF0F9AF0)
 )
 
 internal val DEFAULT_TOOL_COLOR = Color(0xFF6AB4F0)
@@ -1025,8 +1732,7 @@ private val TOOL_ICONS = mapOf(
     "cline" to R.raw.ic_tool_cline, "kimi" to R.raw.ic_tool_moonshot,
     "qwen" to R.raw.ic_tool_qwen, "grok" to R.raw.ic_tool_grok,
     "copilot" to R.raw.ic_tool_copilot, "pi" to R.raw.ic_tool_pi,
-    "zed" to R.raw.ic_tool_zed, "kilocode" to R.raw.ic_tool_kilocode,
-    "micode" to R.raw.ic_tool_xiaomi, "zcode" to R.raw.ic_tool_zai,
+    "zed" to R.raw.ic_tool_zed, "zcode" to R.raw.ic_tool_zai,
     "deepseek" to R.raw.ic_tool_deepseek, "xai" to R.raw.ic_tool_xai,
     "meta" to R.raw.ic_tool_meta, "mistral" to R.raw.ic_tool_mistral,
     "moonshot" to R.raw.ic_tool_moonshot, "zai" to R.raw.ic_tool_zai,
@@ -1034,44 +1740,82 @@ private val TOOL_ICONS = mapOf(
     "minimax" to R.raw.ic_tool_minimax,
     "openai" to R.raw.ic_tool_codex,
     "anthropic" to R.raw.ic_tool_claude, "google" to R.raw.ic_tool_gemini,
-    "qwen" to R.raw.ic_tool_qwen, "xai" to R.raw.ic_tool_xai,
-    "mistral" to R.raw.ic_tool_mistral, "cohere" to R.raw.ic_tool_cohere,
     "bigmodel" to R.raw.ic_tool_bigmodel,
     "zhipu" to R.raw.ic_tool_bigmodel
 )
 
+private val TOOL_RASTER_ICONS = mapOf(
+    "amp" to R.drawable.ic_tool_amp,
+    "droid" to R.drawable.ic_tool_droid,
+    "omp" to R.drawable.ic_tool_omp,
+    "goose" to R.drawable.ic_tool_goose,
+    "kilo" to R.drawable.ic_tool_kilo,
+    "kilocode" to R.drawable.ic_tool_kilo,
+    "commandcode" to R.drawable.ic_tool_commandcode,
+    "mimo" to R.drawable.ic_tool_mimo,
+    "micode" to R.drawable.ic_tool_mimo,
+    "muse" to R.drawable.ic_tool_muse,
+    "kiro" to R.drawable.ic_tool_kiro,
+    "codebuddy" to R.drawable.ic_tool_codebuddy,
+    "workbuddy" to R.drawable.ic_tool_workbuddy,
+    "proma" to R.drawable.ic_tool_proma,
+    "catpaw" to R.drawable.ic_tool_catpaw,
+    "qodercn" to R.drawable.ic_tool_qoder,
+    "reasonix" to R.drawable.ic_tool_reasonix,
+    "dsh" to R.drawable.ic_tool_dsh,
+    "cherrystudio" to R.drawable.ic_tool_cherrystudio,
+    "lmstudio" to R.drawable.ic_tool_lmstudio,
+    "unsloth" to R.drawable.ic_tool_unsloth,
+    "devin" to R.drawable.ic_tool_devin,
+    "fx" to R.drawable.ic_tool_fx,
+    "mcode" to R.drawable.ic_tool_mcode
+)
+
 private fun toolIconRes(id: String): Int? = TOOL_ICONS[id]
+
+private fun toolRasterIconRes(id: String): Int? = TOOL_RASTER_ICONS[id]
 
 @Composable
 internal fun ToolAvatar(tool: String, label: String, color: Color, size: androidx.compose.ui.unit.Dp) {
+    val rasterIconRes = toolRasterIconRes(tool)
     val iconRes = toolIconRes(tool)
-    if (iconRes != null) {
-        AsyncImage(
-            model = ImageRequest.Builder(LocalContext.current)
-                .data(iconRes)
-                .decoderFactory(SvgDecoder.Factory())
-                .build(),
-            contentDescription = label,
-            colorFilter = ColorFilter.tint(color),
-            modifier = Modifier.size(size)
-        )
-    } else {
-        // Fallback: colored circle with initials for unknown tools
-        val initials = label.take(2)
-        Canvas(modifier = Modifier.size(size)) {
-            drawCircle(color = color)
-            drawContext.canvas.nativeCanvas.drawText(
-                initials,
-                center.x,
-                center.y + 4.dp.toPx(),
-                android.graphics.Paint().apply {
-                    this.color = android.graphics.Color.WHITE
-                    textSize = size.toPx() * 0.40f
-                    textAlign = android.graphics.Paint.Align.CENTER
-                    isAntiAlias = true
-                    typeface = android.graphics.Typeface.DEFAULT_BOLD
-                }
+    when {
+        rasterIconRes != null -> {
+            Image(
+                painter = painterResource(id = rasterIconRes),
+                contentDescription = label,
+                modifier = Modifier.size(size)
             )
+        }
+        iconRes != null -> {
+            AsyncImage(
+                model = ImageRequest.Builder(LocalContext.current)
+                    .data(iconRes)
+                    .decoderFactory(SvgDecoder.Factory())
+                    .build(),
+                contentDescription = label,
+                colorFilter = ColorFilter.tint(color),
+                modifier = Modifier.size(size)
+            )
+        }
+        else -> {
+            // Fallback: colored circle with initials for unknown tools
+            val initials = label.take(2)
+            Canvas(modifier = Modifier.size(size)) {
+                drawCircle(color = color)
+                drawContext.canvas.nativeCanvas.drawText(
+                    initials,
+                    center.x,
+                    center.y + 4.dp.toPx(),
+                    android.graphics.Paint().apply {
+                        this.color = android.graphics.Color.WHITE
+                        textSize = size.toPx() * 0.40f
+                        textAlign = android.graphics.Paint.Align.CENTER
+                        isAntiAlias = true
+                        typeface = android.graphics.Typeface.DEFAULT_BOLD
+                    }
+                )
+            }
         }
     }
 }
@@ -1108,6 +1852,16 @@ fun SessionsTab(sessions: List<SessionInfo>) {
 
 @Composable
 fun SessionCard(session: SessionInfo, onClick: () -> Unit = {}) {
+    val state = sessionState(session)
+    val title = sessionTitle(session)
+    val subtitle = listOfNotNull(
+        session.projectLabel?.takeIf { it.isNotBlank() && it != title },
+        session.sessionId.takeLast(40).takeIf { it != title }
+    ).joinToString(" · ")
+    val cacheHit = cacheHitRate(session)
+    val speed = outputTokensPerSecond(session)
+    val context = contextUsage(session)
+
     Card(
         modifier = Modifier.fillMaxWidth(),
         onClick = onClick
@@ -1119,35 +1873,179 @@ fun SessionCard(session: SessionInfo, onClick: () -> Unit = {}) {
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
-                    Icon(Icons.Default.Storage, contentDescription = null, modifier = Modifier.size(16.dp))
+                    ToolAvatar(session.client, toolLabel(session.client), toolColor(session.client), 18.dp)
                     Spacer(modifier = Modifier.width(6.dp))
-                    Text(session.client.replaceFirstChar { it.uppercase() }, style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.primary)
+                    Text(
+                        toolLabel(session.client),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.primary,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    if (state != null) {
+                        Spacer(modifier = Modifier.width(6.dp))
+                        SessionStateBadge(state)
+                    }
                 }
                 Text(formatNumber(session.totalTokens), style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold)
             }
             Spacer(modifier = Modifier.height(4.dp))
             Text(
-                session.sessionId.takeLast(40),
+                title,
                 style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 1,
+                fontWeight = FontWeight.Medium,
+                maxLines = 2,
                 overflow = TextOverflow.Ellipsis
             )
+            if (subtitle.isNotBlank()) {
+                Text(
+                    subtitle,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+            Spacer(modifier = Modifier.height(4.dp))
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
                     stringResource(R.string.sessions_msgs_cost_format, session.messageCount, formatCost(session.costUsd)),
                     style = MaterialTheme.typography.labelSmall
                 )
-                session.lastUsedAt?.let { last ->
-                    Text(formatTime(last, LocalContext.current), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    cacheHit?.let {
+                        Text(
+                            stringResource(R.string.sessions_metric_cache_format, it * 100),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    speed?.let {
+                        Text(
+                            stringResource(R.string.sessions_metric_tps_format, it),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    context?.let {
+                        Text(
+                            stringResource(R.string.sessions_metric_context_format, it * 100),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    session.lastUsedAt?.let { last ->
+                        Text(
+                            formatTime(last, LocalContext.current),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
                 }
+            }
+            val flags = buildList {
+                if (session.sessionKind == "background-review") {
+                    add(stringResource(R.string.sessions_background_review))
+                }
+                if (!session.parentSessionId.isNullOrBlank()) {
+                    add(stringResource(R.string.sessions_subagent))
+                }
+            }
+            if (flags.isNotEmpty()) {
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    flags.joinToString(" · "),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.tertiary
+                )
             }
         }
     }
+}
+
+private enum class SessionState { RUNNING, WAITING, IDLE }
+
+@Composable
+private fun SessionStateBadge(state: SessionState) {
+    val labelRes = when (state) {
+        SessionState.RUNNING -> R.string.sessions_running
+        SessionState.WAITING -> R.string.sessions_waiting_input
+        SessionState.IDLE -> R.string.sessions_idle
+    }
+    val color = when (state) {
+        SessionState.RUNNING -> Color(0xFF4CAF50)
+        SessionState.WAITING -> Color(0xFFFFA726)
+        SessionState.IDLE -> Color(0xFF9E9E9E)
+    }
+    Card(colors = CardDefaults.cardColors(containerColor = color.copy(alpha = 0.12f))) {
+        Text(
+            stringResource(labelRes),
+            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+            style = MaterialTheme.typography.labelSmall,
+            fontWeight = FontWeight.Bold,
+            color = color
+        )
+    }
+}
+
+private fun sessionState(session: SessionInfo): SessionState? {
+    val recent = sessionIsRecent(session.lastUsedAt)
+    // liveActivity is a 30-second observation; after that the transcript's own
+    // turn boundary is the only evidence left.
+    val liveState = sessionLiveState(session)
+    return when {
+        liveState == "running" -> SessionState.RUNNING
+        liveState == "waiting" -> SessionState.WAITING
+        liveState == "idle" -> SessionState.IDLE
+        session.waitingForInput == true && recent -> SessionState.WAITING
+        session.turnEnded == false && recent -> SessionState.RUNNING
+        else -> null
+    }
+}
+
+private fun sessionLiveState(session: SessionInfo): String? {
+    val live = session.liveActivity ?: return null
+    val observed = live.observedAt ?: return null
+    return try {
+        val ageSeconds = Duration.between(Instant.parse(observed), Instant.now()).seconds
+        if (ageSeconds in 0..30) live.state else null
+    } catch (_: Exception) {
+        null
+    }
+}
+
+private fun sessionIsRecent(iso: String?, minutes: Long = 10): Boolean {
+    if (iso.isNullOrBlank()) return false
+    return try {
+        Duration.between(Instant.parse(iso), Instant.now()).toMinutes() in 0..minutes
+    } catch (_: Exception) {
+        false
+    }
+}
+
+private fun sessionTitle(session: SessionInfo): String =
+    session.title?.takeIf { it.isNotBlank() }
+        ?: session.projectLabel?.takeIf { it.isNotBlank() }
+        ?: session.sessionId.takeLast(40)
+
+private fun cacheHitRate(session: SessionInfo): Double? {
+    val denominator = session.inputTokens + session.cacheReadTokens + session.cacheWriteTokens
+    if (denominator <= 0 || session.cacheReadTokens <= 0) return null
+    return session.cacheReadTokens.toDouble() / denominator
+}
+
+private fun outputTokensPerSecond(session: SessionInfo): Double? {
+    if (session.timedDurationMs <= 0 || session.timedOutputTokens <= 0) return null
+    return session.timedOutputTokens * 1000.0 / session.timedDurationMs
+}
+
+private fun contextUsage(session: SessionInfo): Double? {
+    if (session.contextWindow <= 0 || session.contextTokens <= 0) return null
+    return (session.contextTokens.toDouble() / session.contextWindow).coerceIn(0.0, 1.0)
 }
 
 @Composable
@@ -1157,13 +2055,15 @@ fun SessionDetailDialog(session: SessionInfo, onDismiss: () -> Unit) {
         title = {
             Column {
                 Text(
-                    session.client.replaceFirstChar { it.uppercase() },
+                    sessionTitle(session),
                     style = MaterialTheme.typography.titleMedium
                 )
                 Text(
-                    session.sessionId,
+                    toolLabel(session.client) + " · " + session.sessionId,
                     style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
                 )
             }
         },
@@ -1195,10 +2095,91 @@ fun SessionDetailDialog(session: SessionInfo, onDismiss: () -> Unit) {
                     }
                 }
 
+                // Live activity, context headroom and throughput
+                val state = sessionState(session)
+                val cacheHit = cacheHitRate(session)
+                val speed = outputTokensPerSecond(session)
+                val context = contextUsage(session)
+                val promptCache = session.promptCache
+                if (state != null || session.projectLabel != null || session.contextWindow > 0 ||
+                    cacheHit != null || speed != null || promptCache != null ||
+                    !session.parentSessionId.isNullOrBlank() || session.unpricedTokens > 0
+                ) {
+                    SectionBlock(stringResource(R.string.session_context_title)) {
+                        state?.let {
+                            val label = when (it) {
+                                SessionState.RUNNING -> stringResource(R.string.sessions_running)
+                                SessionState.WAITING -> stringResource(R.string.sessions_waiting_input)
+                                SessionState.IDLE -> stringResource(R.string.sessions_idle)
+                            }
+                            SummaryRow(stringResource(R.string.session_activity), label)
+                        }
+                        session.projectLabel?.takeIf { it.isNotBlank() }?.let {
+                            SummaryRow(stringResource(R.string.session_project), it)
+                        }
+                        if (session.contextWindow > 0) {
+                            val ratio = context ?: 0.0
+                            SummaryRow(
+                                stringResource(R.string.session_context_usage),
+                                stringResource(
+                                    R.string.session_context_usage_format,
+                                    formatNumber(session.contextTokens),
+                                    formatNumber(session.contextWindow),
+                                    ratio * 100
+                                )
+                            )
+                            Spacer(modifier = Modifier.height(4.dp))
+                            LinearProgressIndicator(
+                                progress = { ratio.toFloat() },
+                                modifier = Modifier.fillMaxWidth().height(6.dp)
+                            )
+                        }
+                        cacheHit?.let {
+                            SummaryRow(
+                                stringResource(R.string.session_cache_hit),
+                                stringResource(R.string.session_cache_hit_format, it * 100)
+                            )
+                        }
+                        speed?.let {
+                            SummaryRow(
+                                stringResource(R.string.session_output_speed),
+                                stringResource(R.string.session_output_speed_format, it)
+                            )
+                        }
+                        promptCache?.let { cache ->
+                            SummaryRow(
+                                stringResource(R.string.session_prompt_cache),
+                                stringResource(
+                                    R.string.session_prompt_cache_format,
+                                    cache.ttlSeconds / 60,
+                                    cache.observedAt?.let { formatTime(it, LocalContext.current) }
+                                        ?: stringResource(R.string.session_na)
+                                )
+                            )
+                        }
+                        session.parentSessionId?.takeIf { it.isNotBlank() }?.let { parent ->
+                            val parentClient = session.parentClient?.takeIf { it.isNotBlank() } ?: session.client
+                            SummaryRow(
+                                stringResource(R.string.session_parent),
+                                "$parentClient · $parent"
+                            )
+                        }
+                        if (session.unpricedTokens > 0) {
+                            Text(
+                                stringResource(R.string.session_unpriced_hint, formatNumber(session.unpricedTokens)),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.tertiary
+                            )
+                        }
+                    }
+                }
+
                 // Models
                 if (!session.models.isNullOrEmpty()) {
                     SectionBlock(stringResource(R.string.session_models_used)) {
-                        session.models.entries.sortedByDescending { it.value }.forEach { (model, tokens) ->
+                        val groupedSessionModels = ModelAliasRegistry.groupModels(session.models)
+                        val groupedSessionCosts = ModelAliasRegistry.groupCosts(session.models, session.modelCosts)
+                        groupedSessionModels.entries.sortedByDescending { it.value }.forEach { (model, tokens) ->
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
@@ -1208,7 +2189,7 @@ fun SessionDetailDialog(session: SessionInfo, onDismiss: () -> Unit) {
                                 Text(model, style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
                                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                                     Text(formatNumber(tokens), style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Medium)
-                                    session.modelCosts?.get(model)?.let { cost ->
+                                    groupedSessionCosts[model]?.let { cost ->
                                         Text(formatCost(cost), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.tertiary)
                                     }
                                 }
@@ -1289,11 +2270,26 @@ private fun TokenRow(label: String, tokens: Long, bold: Boolean = false) {
 
 @Composable
 fun TrendsTab(history: HistoryResponse?) {
-    val daily = history?.daily
+    val allDaily = history?.daily.orEmpty()
     val monthly = history?.monthly
     val summary = history?.summary
+    var range by remember { mutableIntStateOf(1) }
 
-    if (daily.isNullOrEmpty() && monthly.isNullOrEmpty()) {
+    val daily = remember(allDaily, range) {
+        when (range) {
+            0 -> {
+                val cutoff = java.time.LocalDate.now().minusDays(6).toString()
+                allDaily.filter { it.date >= cutoff }
+            }
+            1 -> {
+                val cutoff = java.time.LocalDate.now().minusDays(29).toString()
+                allDaily.filter { it.date >= cutoff }
+            }
+            else -> allDaily
+        }
+    }
+
+    if (allDaily.isEmpty() && monthly.isNullOrEmpty()) {
         Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 Icon(Icons.AutoMirrored.Filled.TrendingUp, contentDescription = null, modifier = Modifier.size(48.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -1306,6 +2302,15 @@ fun TrendsTab(history: HistoryResponse?) {
         return
     }
 
+    val rangeTokens = daily.sumOf { it.tokens }
+    val rangeCost = daily.sumOf { it.cost }
+    val rangeActiveDays = daily.count { it.tokens > 0 || it.cost > 0 }
+    val rangeMessages = daily.sumOf { it.messages }
+    val rangeActiveTimeMs = daily.sumOf { it.activeTimeMs }
+    val rangeUnpriced = daily.sumOf { it.unpricedTokens }
+    val byClient = aggregateHistoryBuckets(daily) { it.perClient }
+    val byModel = aggregateHistoryBuckets(daily, resolveAliases = true) { it.perModel }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -1313,10 +2318,47 @@ fun TrendsTab(history: HistoryResponse?) {
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            listOf(R.string.trends_range_7d, R.string.trends_range_30d, R.string.trends_range_all)
+                .forEachIndexed { index, res ->
+                    FilterChip(
+                        selected = range == index,
+                        onClick = { range = index },
+                        label = { Text(stringResource(res)) }
+                    )
+                }
+        }
+
+        Card(modifier = Modifier.fillMaxWidth()) {
+            Column(modifier = Modifier.padding(16.dp)) {
+                Text(stringResource(R.string.trends_summary), style = MaterialTheme.typography.titleSmall)
+                Spacer(modifier = Modifier.height(12.dp))
+                Row(modifier = Modifier.fillMaxWidth()) {
+                    StatItem(stringResource(R.string.trends_total_tokens), formatNumber(rangeTokens), Modifier.weight(1f))
+                    StatItem(stringResource(R.string.trends_total_cost), formatCost(rangeCost), Modifier.weight(1f))
+                    StatItem(stringResource(R.string.trends_active_days), rangeActiveDays.toString(), Modifier.weight(1f))
+                }
+                Spacer(modifier = Modifier.height(8.dp))
+                Row(modifier = Modifier.fillMaxWidth()) {
+                    StatItem(stringResource(R.string.trends_messages), formatNumber(rangeMessages.toLong()), Modifier.weight(1f))
+                    StatItem(stringResource(R.string.trends_active_time), formatActiveTime(rangeActiveTimeMs), Modifier.weight(1f))
+                    Spacer(modifier = Modifier.weight(1f))
+                }
+                if (rangeUnpriced > 0) {
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Text(
+                        stringResource(R.string.overview_unpriced_hint, formatNumber(rangeUnpriced)),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.tertiary
+                    )
+                }
+            }
+        }
+
         if (summary != null) {
             Card(modifier = Modifier.fillMaxWidth()) {
                 Column(modifier = Modifier.padding(16.dp)) {
-                    Text(stringResource(R.string.trends_summary), style = MaterialTheme.typography.titleSmall)
+                    Text(stringResource(R.string.trends_lifetime_summary), style = MaterialTheme.typography.titleSmall)
                     Spacer(modifier = Modifier.height(12.dp))
                     Row(modifier = Modifier.fillMaxWidth()) {
                         StatItem(stringResource(R.string.trends_total_tokens), formatNumber(summary.totalTokens), Modifier.weight(1f))
@@ -1325,26 +2367,36 @@ fun TrendsTab(history: HistoryResponse?) {
                     }
                     Spacer(modifier = Modifier.height(8.dp))
                     Row(modifier = Modifier.fillMaxWidth()) {
-                        StatItem(stringResource(R.string.trends_current_streak), "${summary.currentStreak}d", Modifier.weight(1f))
-                        StatItem(stringResource(R.string.trends_longest_streak), "${summary.longestStreak}d", Modifier.weight(1f))
+                        StatItem(stringResource(R.string.trends_current_streak), stringResource(R.string.trends_streak_format, summary.currentStreak), Modifier.weight(1f))
+                        StatItem(stringResource(R.string.trends_longest_streak), stringResource(R.string.trends_streak_format, summary.longestStreak), Modifier.weight(1f))
                         StatItem(stringResource(R.string.trends_peak_day), formatNumber(summary.peakDayTokens), Modifier.weight(1f))
+                    }
+                    if (summary.activeTimeMs > 0) {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            stringResource(R.string.trends_active_time_format, formatActiveTime(summary.activeTimeMs)),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
                     }
                 }
             }
         }
 
-        if (!daily.isNullOrEmpty()) {
+        if (allDaily.isNotEmpty()) {
             Card(modifier = Modifier.fillMaxWidth()) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     Text(stringResource(R.string.trends_activity), style = MaterialTheme.typography.titleSmall)
                     Spacer(modifier = Modifier.height(12.dp))
                     ActivityGrid(
-                        days = daily,
+                        days = allDaily,
                         modifier = Modifier.fillMaxWidth()
                     )
                 }
             }
+        }
 
+        if (daily.isNotEmpty()) {
             Card(modifier = Modifier.fillMaxWidth()) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     Text(stringResource(R.string.trends_daily_tokens), style = MaterialTheme.typography.titleSmall)
@@ -1370,6 +2422,24 @@ fun TrendsTab(history: HistoryResponse?) {
                     )
                 }
             }
+        }
+
+        if (byClient.isNotEmpty() && rangeTokens > 0) {
+            BreakdownCard(
+                title = stringResource(R.string.trends_by_tool),
+                entries = byClient,
+                totalTokens = rangeTokens,
+                showAvatar = true
+            )
+        }
+
+        if (byModel.isNotEmpty() && rangeTokens > 0) {
+            BreakdownCard(
+                title = stringResource(R.string.trends_by_model),
+                entries = byModel,
+                totalTokens = rangeTokens,
+                showAvatar = false
+            )
         }
 
         if (!monthly.isNullOrEmpty()) {
@@ -1405,6 +2475,84 @@ fun TrendsTab(history: HistoryResponse?) {
         }
     }
 }
+
+@Composable
+private fun BreakdownCard(
+    title: String,
+    entries: Map<String, Long>,
+    totalTokens: Long,
+    showAvatar: Boolean
+) {
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Text(title, style = MaterialTheme.typography.titleSmall)
+            Spacer(modifier = Modifier.height(8.dp))
+            entries.entries.sortedByDescending { it.value }.take(8).forEach { (key, tokens) ->
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 3.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    if (showAvatar) {
+                        ToolAvatar(key, toolLabel(key), toolColor(key), 16.dp)
+                        Spacer(modifier = Modifier.width(6.dp))
+                    }
+                    Text(
+                        if (showAvatar) toolLabel(key) else key,
+                        style = MaterialTheme.typography.bodySmall,
+                        modifier = Modifier.weight(1f),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Text(
+                        stringResource(
+                            R.string.trends_breakdown_format,
+                            formatNumber(tokens),
+                            tokens * 100.0 / totalTokens
+                        ),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                LinearProgressIndicator(
+                    progress = { (tokens.toFloat() / totalTokens).coerceIn(0f, 1f) },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(4.dp)
+                )
+            }
+        }
+    }
+}
+
+private fun aggregateHistoryBuckets(
+    days: List<HistoryDay>,
+    resolveAliases: Boolean = false,
+    selector: (HistoryDay) -> Map<String, HistoryBucket>?
+): Map<String, Long> {
+    val totals = mutableMapOf<String, Long>()
+    days.forEach { day ->
+        selector(day)?.forEach { (rawKey, bucket) ->
+            val key = if (resolveAliases) ModelAliasRegistry.label(rawKey) else rawKey
+            totals[key] = (totals[key] ?: 0L) + bucket.tokens
+        }
+    }
+    return totals
+}
+
+@Composable
+private fun formatActiveTime(milliseconds: Long): String {
+    val totalMinutes = milliseconds / 60000
+    val hours = totalMinutes / 60
+    val minutes = totalMinutes % 60
+    return if (hours > 0) {
+        stringResource(R.string.trends_hours_minutes_format, hours, minutes)
+    } else {
+        stringResource(R.string.trends_minutes_format, minutes)
+    }
+}
+
 @Composable
 fun ActivityGrid(
     days: List<HistoryDay>,

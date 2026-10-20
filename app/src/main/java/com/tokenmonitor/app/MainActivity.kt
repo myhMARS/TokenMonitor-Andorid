@@ -1,5 +1,7 @@
 package com.tokenmonitor.app
 
+import android.Manifest
+import android.annotation.SuppressLint
 import android.content.Context
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -14,6 +16,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.res.stringResource
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.tokenmonitor.app.data.LocaleManager
 import com.tokenmonitor.app.ui.DashboardViewModel
@@ -46,6 +49,7 @@ class MainActivity : ComponentActivity() {
     }
 }
 
+@SuppressLint("InlinedApi")
 @Composable
 fun TokenMonitorApp(
     localeManager: LocaleManager,
@@ -76,6 +80,15 @@ fun TokenMonitorApp(
         if (saved.isNotEmpty()) LocaleManager.wrap(ctx, saved) else ctx
     }
 
+    val localNetworkDeniedMessage = stringResource(R.string.setup_error_local_network_denied)
+    val localNetworkLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        if (granted) {
+            viewModel.connect()
+        } else {
+            viewModel.setConnectionError(localNetworkDeniedMessage)
+        }
+    }
+
     androidx.compose.runtime.CompositionLocalProvider(
         androidx.compose.ui.platform.LocalContext provides wrappedCtx
     ) {
@@ -87,7 +100,13 @@ fun TokenMonitorApp(
                 connectionError = uiState.connectionError,
                 onUrlChange = { viewModel.updateHubUrl(it) },
                 onSecretChange = { viewModel.updateHubSecret(it) },
-                onConnect = { viewModel.connect() }
+                onConnect = {
+                    if (requiresLocalNetworkPermission(uiState.hubUrl) && !hasLocalNetworkPermission(appCtx)) {
+                        localNetworkLauncher.launch(Manifest.permission.ACCESS_LOCAL_NETWORK)
+                    } else {
+                        viewModel.connect()
+                    }
+                }
             )
         } else {
             DashboardScreen(
@@ -99,8 +118,20 @@ fun TokenMonitorApp(
                 sessions = uiState.sessions,
                 history = uiState.history,
                 deviceCount = uiState.deviceCount,
+                subscriptions = uiState.subscriptions,
+                subscriptionsUpdatedAt = uiState.subscriptionsUpdatedAt,
+                subscriptionsLoading = uiState.subscriptionsLoading,
+                projectsIncomplete = uiState.projectsIncomplete,
+                modelAliases = uiState.modelAliases,
+                modelAliasGrouping = uiState.modelAliasGrouping,
+                isStreamConnected = uiState.isStreamConnected,
                 hubVersion = uiState.hubVersion,
                 hubNow = uiState.hubNow,
+                hubRole = uiState.hubRole,
+                hubRuntime = uiState.hubRuntime,
+                hubBuild = uiState.hubBuild,
+                staleAfterMs = uiState.staleAfterMs,
+                periodWindows = uiState.periodWindows,
                 selectedTab = uiState.selectedTab,
                 isRefreshing = uiState.isRefreshing,
                 deletingDeviceId = uiState.deletingDeviceId,
@@ -108,6 +139,9 @@ fun TokenMonitorApp(
                 onRefresh = { viewModel.refresh() },
                 onDisconnect = { viewModel.disconnect() },
                 onDeleteDevice = { viewModel.deleteDevice(it) },
+                onSaveSubscription = { viewModel.saveSubscription(it) },
+                onDeleteSubscription = { viewModel.deleteSubscription(it) },
+                onRefreshSubscriptions = { viewModel.refreshSubscriptions() },
                 onClearSnackbar = { viewModel.clearSnackbar() },
                 onSwitchLanguage = {
                     val current = LocaleManager.getSavedLocale(ctx)

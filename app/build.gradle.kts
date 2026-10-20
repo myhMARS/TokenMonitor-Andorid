@@ -7,15 +7,16 @@ plugins {
 android {
     namespace = "com.tokenmonitor.app"
     compileSdk {
-        version = release(36) {
-            minorApiLevel = 1
-        }
+        version = release(37)
     }
 
     defaultConfig {
         applicationId = "com.tokenmonitor.app"
         minSdk = 31
-        targetSdk = 36
+        // The API 37 migration is documented in LocalNetworkAccess.kt; the
+        // lint check below and this suppression only silence the edit detector.
+        //noinspection EditedTargetSdkVersion
+        targetSdk = 37
         versionCode = 1
         versionName = "1.0"
 
@@ -36,6 +37,21 @@ android {
     buildFeatures {
         compose = true
     }
+    lint {
+        // The API 37 migration was reviewed: LAN access is covered by
+        // ACCESS_LOCAL_NETWORK (LocalNetworkAccess.kt), and the remaining
+        // API 37 changes do not affect this app. This IDE-only check flags the
+        // edit itself, so record the review here instead of in the IDE.
+        disable += "EditedTargetSdkVersion"
+    }
+}
+
+// The androidTest runtime classpath does not receive the main platform BOM in
+// this AGP version. Extend it from the app's implementation configuration so the
+// Compose BOM applies there too, instead of declaring the same BOM twice.
+configurations.named("androidTestRuntimeOnly") {
+    // Resolve eagerly: the Provider overload of extendsFrom is @Incubating.
+    extendsFrom(configurations.getByName("implementation"))
 }
 
 dependencies {
@@ -60,7 +76,6 @@ dependencies {
     implementation(libs.coil.svg)
     implementation(libs.androidx.security.crypto)
     testImplementation(libs.junit)
-    androidTestImplementation(platform(libs.androidx.compose.bom))
     androidTestImplementation(libs.androidx.compose.ui.test.junit4)
     androidTestImplementation(libs.androidx.espresso.core)
     androidTestImplementation(libs.androidx.junit)

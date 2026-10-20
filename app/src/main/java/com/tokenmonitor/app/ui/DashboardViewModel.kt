@@ -5,16 +5,24 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.tokenmonitor.app.R
 import com.tokenmonitor.app.data.HubPreferences
+import com.tokenmonitor.app.data.SubscriptionConflictException
 import com.tokenmonitor.app.data.TokenMonitorRepository
 import com.tokenmonitor.app.data.model.DeviceRecord
+import com.tokenmonitor.app.data.model.HubBuild
 import com.tokenmonitor.app.data.model.LimitProvider
+import com.tokenmonitor.app.data.model.PeriodWindows
+import com.tokenmonitor.app.data.model.SubscriptionRecord
+import com.tokenmonitor.app.data.model.SubscriptionsWriteRequest
 import com.tokenmonitor.app.data.model.SessionInfo
+import com.tokenmonitor.app.data.model.SseStatsEvent
 import com.tokenmonitor.app.data.model.StatsResponse
 import com.tokenmonitor.app.data.model.UsagePeriod
 import com.tokenmonitor.app.data.model.HistoryResponse
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
@@ -36,6 +44,19 @@ data class DashboardUiState(
     val deviceCount: Int = 0,
     val hubVersion: Int = 0,
     val hubNow: String = "",
+    val hubRole: String = "",
+    val hubRuntime: String? = null,
+    val hubBuild: HubBuild? = null,
+    val staleAfterMs: Long? = null,
+    val periodWindows: PeriodWindows? = null,
+    val projectsIncomplete: Boolean = false,
+    val subscriptions: List<SubscriptionRecord> = emptyList(),
+    val subscriptionsUpdatedAt: String = "",
+    val subscriptionsLoading: Boolean = false,
+    val modelAliases: Map<String, String> = emptyMap(),
+    val modelAliasGrouping: String = "off",
+    val modelAliasesRevision: Int = -1,
+    val isStreamConnected: Boolean = false,
     val isRefreshing: Boolean = false,
     val deletingDeviceId: String? = null,
     val snackbarMessage: String? = null
@@ -45,6 +66,8 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
 
     private val preferences = HubPreferences(application)
     private val repository = TokenMonitorRepository()
+
+    private var streamJob: Job? = null
 
     private val _uiState = MutableStateFlow(DashboardUiState())
     val uiState: StateFlow<DashboardUiState> = _uiState.asStateFlow()
@@ -65,6 +88,10 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
                 _uiState.value = _uiState.value.copy(isConnecting = false)
             }
         }
+    }
+
+    fun setConnectionError(message: String) {
+        _uiState.value = _uiState.value.copy(connectionError = message)
     }
 
     fun updateHubUrl(url: String) {
@@ -100,6 +127,9 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
                         deviceCount = health.deviceCount,
                         hubVersion = health.version,
                         hubNow = health.now,
+                        hubRole = health.role,
+                        hubRuntime = health.runtime,
+                        hubBuild = health.hubBuild,
                         isRefreshing = true
                     )
                     loadAllData()
@@ -127,6 +157,9 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
                     deviceCount = health.deviceCount,
                     hubVersion = health.version,
                     hubNow = health.now,
+                    hubRole = health.role,
+                    hubRuntime = health.runtime,
+                    hubBuild = health.hubBuild,
                     isRefreshing = true
                 )
                 loadAllData()
@@ -151,6 +184,8 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
     }
 
     fun disconnect() {
+        streamJob?.cancel()
+        streamJob = null
         repository.close()
         _uiState.value = DashboardUiState(
             isConnecting = false,
@@ -189,6 +224,82 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
         loadStats()
         loadDevices()
         loadHistory()
+        loadSubscriptions()
+        loadModelAliases()
+    }
+
+    private suspend fun loadModelAliases() {
+        repository.getModelAliases().onSuccess { response ->
+            _uiState.value = _uiState.value.copy(
+                modelAliases = response.value?.modelAliases.orEmpty(),
+                modelAliasGrouping = response.value?.modelAliasGrouping ?: "off",
+                modelAliasesRevision = response.revision
+            )
+        }
+    }
+
+    fun refreshSubscriptions() {
+        viewModelScope.launch { loadSubscriptions() }
+    }
+
+    fun saveSubscription(record: SubscriptionRecord) {
+        val current = _uiState.value.subscriptions
+        val next = if (current.any { it.id == record.id }) {
+            current.map { if (it.id == record.id) record else it }
+        } else {
+            current + record
+        }
+        persistSubscriptions(next, R.string.subscriptions_saved)
+    }
+
+    fun deleteSubscription(id: String) {
+        persistSubscriptions(
+            _uiState.value.subscriptions.filterNot { it.id == id },
+            R.string.subscriptions_deleted
+        )
+    }
+
+    private fun persistSubscriptions(next: List<SubscriptionRecord>, successMessage: Int) {
+        viewModelScope.launch {
+            val baseUpdatedAt = _uiState.value.subscriptionsUpdatedAt
+            repository.putSubscriptions(SubscriptionsWriteRequest(next, baseUpdatedAt)).fold(
+                onSuccess = { response ->
+                    _uiState.value = _uiState.value.copy(
+                        subscriptions = response.subscriptions ?: next,
+                        subscriptionsUpdatedAt = response.updatedAt,
+                        snackbarMessage = getApplication<Application>().getString(successMessage)
+                    )
+                },
+                onFailure = { error ->
+                    loadSubscriptions()
+                    val message = if (error is SubscriptionConflictException) {
+                        getApplication<Application>().getString(R.string.subscriptions_conflict)
+                    } else {
+                        getApplication<Application>().getString(
+                            R.string.subscriptions_save_failed,
+                            error.message ?: ""
+                        )
+                    }
+                    _uiState.value = _uiState.value.copy(snackbarMessage = message)
+                }
+            )
+        }
+    }
+
+    private suspend fun loadSubscriptions() {
+        _uiState.value = _uiState.value.copy(subscriptionsLoading = true)
+        repository.getSubscriptions().fold(
+            onSuccess = { response ->
+                _uiState.value = _uiState.value.copy(
+                    subscriptions = response.subscriptions ?: emptyList(),
+                    subscriptionsUpdatedAt = response.updatedAt,
+                    subscriptionsLoading = false
+                )
+            },
+            onFailure = {
+                _uiState.value = _uiState.value.copy(subscriptionsLoading = false)
+            }
+        )
     }
 
     private suspend fun loadStats() {
@@ -231,20 +342,77 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
             month = periods?.month,
             allTime = periods?.allTime,
             limits = stats.limits?.providers ?: emptyList(),
-            sessions = allSessions.sortedByDescending { it.lastUsedAt ?: it.startedAt ?: "" }
+            sessions = allSessions.sortedByDescending { it.lastUsedAt ?: it.startedAt ?: "" },
+            staleAfterMs = stats.staleAfterMs,
+            periodWindows = stats.periodWindows,
+            projectsIncomplete = stats.projectsIncomplete
         )
+
+        val remoteAliasRevision = stats.syncSettingsRevisions?.get("modelAliases")
+        if (remoteAliasRevision != null && remoteAliasRevision != _uiState.value.modelAliasesRevision) {
+            viewModelScope.launch { loadModelAliases() }
+        }
+
+        val remoteSubscriptions = stats.subscriptionsUpdatedAt
+        val localSubscriptions = _uiState.value.subscriptionsUpdatedAt
+        if (!remoteSubscriptions.isNullOrEmpty() &&
+            localSubscriptions.isNotEmpty() &&
+            remoteSubscriptions != localSubscriptions
+        ) {
+            viewModelScope.launch { loadSubscriptions() }
+        }
     }
 
     private fun startSseStream() {
-        viewModelScope.launch {
-            repository.statsStream().collect { event ->
-                event.stats?.let { stats ->
-                    extractStatsData(stats)
-                    if (!stats.devices.isNullOrEmpty()) {
-                        _uiState.value = _uiState.value.copy(devices = stats.devices)
+        streamJob?.cancel()
+        streamJob = viewModelScope.launch {
+            var backoffMs = 1_000L
+            while (repository.isConfigured) {
+                var receivedEvent = false
+                repository.statsStream().collect { event ->
+                    receivedEvent = true
+                    backoffMs = 1_000L
+                    handleSseEvent(event)
+                    if (!_uiState.value.isStreamConnected) {
+                        _uiState.value = _uiState.value.copy(isStreamConnected = true)
                     }
                 }
+                if (!repository.isConfigured) break
+                _uiState.value = _uiState.value.copy(isStreamConnected = false)
+                delay(if (receivedEvent) 1_000L else backoffMs)
+                backoffMs = (backoffMs * 2).coerceAtMost(30_000L)
             }
+        }
+    }
+
+    private fun handleSseEvent(event: SseStatsEvent) {
+        val stats = event.stats ?: return
+        if (event.type == "freshness") {
+            applyFreshness(stats)
+            return
+        }
+        extractStatsData(stats)
+        if (!stats.devices.isNullOrEmpty()) {
+            _uiState.value = _uiState.value.copy(devices = stats.devices)
+        }
+    }
+
+    private fun applyFreshness(freshness: StatsResponse) {
+        val updates = freshness.devices.orEmpty().associateBy { it.deviceId }
+        if (updates.isNotEmpty()) {
+            val merged = _uiState.value.devices.map { device ->
+                val update = updates[device.deviceId] ?: return@map device
+                device.copy(
+                    updatedAt = update.updatedAt ?: device.updatedAt,
+                    receivedAt = update.receivedAt ?: device.receivedAt,
+                    ageMs = update.ageMs ?: device.ageMs,
+                    stale = update.stale
+                )
+            }
+            _uiState.value = _uiState.value.copy(devices = merged)
+        }
+        freshness.staleAfterMs?.let { threshold ->
+            _uiState.value = _uiState.value.copy(staleAfterMs = threshold)
         }
     }
 }

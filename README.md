@@ -6,7 +6,7 @@
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" /></a>
   <a href="#"><img src="https://img.shields.io/badge/platform-Android%2012%2B-brightgreen.svg" /></a>
   <a href="#"><img src="https://img.shields.io/badge/min%20SDK-31-orange.svg" /></a>
-  <a href="#"><img src="https://img.shields.io/badge/target%20SDK-36-blueviolet.svg" /></a>
+  <a href="#"><img src="https://img.shields.io/badge/target%20SDK-37-blueviolet.svg" /></a>
   <a href="#"><img src="https://img.shields.io/badge/language-Kotlin-purple.svg" /></a>
 </p>
 
@@ -19,14 +19,16 @@ Token Monitor 是 [Token Monitor Hub](https://github.com/Javis603/token-monitor)
 ## 功能特性
 
 - **概览** — 今日 / 本月 / 总计三张用量卡片，Hub 版本信息与服务器时间，今日 Top 10 模型排行
-- **配额** — 各 AI 提供商预付余额进度条、充值余额消费占比、速率限制窗口可视化，含颜色阈值和重置倒计时
-- **设备** — 已连接设备列表，含平台、总用量和最后活跃时间，支持查看详情和删除
+- **配额** — 各 AI 提供商额度、Credits/预付余额、多账号、套餐计划、到期/重置时间，含颜色阈值和倒计时
+- **设备** — 已连接设备列表，含主机名、系统版本、离线状态、工具健康诊断、顶部工具/模型和删除操作
 - **模型** — 全时段模型用量排名，每个模型展示输出 Token、缓存 Token、费用及可视化占比图
 - **工具** — 按 AI 客户端（Claude Code、Cursor、Cline、Copilot 等 30+）分组统计，配有专属图标和品牌色
-- **会话** — 每次 AI 对话的完整记录，点击展开输入 / 输出 / 缓存 / 推理 Token 明细及使用的模型和提供商
-- **趋势** — GitHub 风格 53 周活跃热力图、30 天日用量和费用柱状图、近 12 个月月度汇总
+- **会话** — 标题/项目/运行状态、上下文余量、缓存命中率、输出 tok/s、子会话标记，点击展开完整 Token 明细
+- **趋势** — 7 天 / 30 天 / 全部区间切换、按工具与模型拆分、活跃时长、GitHub 风格热力图、日用量/费用柱状图、月度汇总
+- **项目** — 按工作区聚合 Token / 费用，展开查看工具与模型占比
+- **订阅** — 与桌面端共享的订阅/充值记录，展示月费、续费日、本月充值与冲突保护写入
 - **API 密钥** — AES-256-GCM 加密存储，支持 16+ AI 平台，一键验证有效性，JSON 批量导入导出
-- **其他** — 中英文双语运行时切换、SSE 实时流同步、支持 HTTP 明文连接（内网环境）
+- **其他** — 中英文双语运行时切换、SSE v2 实时同步（freshness 增量帧 + 自动重连）、共享模型别名、支持 HTTP 明文连接（内网环境）
 
 ## 屏幕截图
 
@@ -54,7 +56,7 @@ Token Monitor 是 [Token Monitor Hub](https://github.com/Javis603/token-monitor)
 |:-----|:---------|:-----|
 | 语言 | Kotlin 2.2 | 全项目 Kotlin |
 | UI | Jetpack Compose + Material 3 | 声明式 UI，动态取色 |
-| 导航 | HorizontalPager | Compose 原生分页，8 个标签页 |
+| 导航 | HorizontalPager | Compose 原生分页，10 个标签页 |
 | 网络 | Ktor Client (OkHttp) | 协程式 HTTP + SSE 流 |
 | 序列化 | Kotlinx Serialization | 编译期类型安全 |
 | 图片 | Coil + SVG Decoder | 异步加载，支持原始 SVG |
@@ -71,7 +73,7 @@ Token Monitor 是 [Token Monitor Hub](https://github.com/Javis603/token-monitor)
 |:-----|:---------|
 | Android Studio | 2024+ |
 | JDK | 17+ |
-| Android SDK | API 36 |
+| Android SDK | API 37 |
 | Gradle | 9.2+ |
 | 运行设备 | Android 12 (API 31)+ |
 
@@ -95,10 +97,12 @@ cd TokenMonitor-Andorid
 
 记录 Hub 的 URL 和 Shared Secret，在应用设置页填入即可连接。
 
+> **Android 17+（targetSdk 37）**：连接局域网地址（如 `192.168.x.x`、`.local`）时，系统会请求「附近的设备」权限（`ACCESS_LOCAL_NETWORK`）；拒绝后内网 Hub 无法连接，公网 Hub 不受影响。
+
 ## 使用指南
 
 1. 首次启动进入设置页，输入 Hub 地址和共享密钥，点击连接
-2. 验证通过后进入仪表盘，左右滑动切换 8 个功能标签页
+2. 验证通过后进入仪表盘，左右滑动切换 10 个功能标签页
 3. 右上角菜单提供刷新、语言切换、API 密钥管理、断开连接
 4. 应用自动通过 SSE 接收 Hub 推送的实时数据更新
 
@@ -129,7 +133,10 @@ TokenMonitor/
 │           ├── theme/                    # Material 3 主题
 │           └── screen/
 │               ├── SetupScreen.kt        # 连接设置页
-│               ├── DashboardScreen.kt    # 仪表盘 (8 标签页)
+│               ├── DashboardScreen.kt    # 仪表盘与概览/配额/设备/模型/工具/会话/趋势
+│               ├── SubscriptionsTab.kt   # 订阅与充值记录
+│               ├── ProjectsTab.kt        # 工作区项目聚合
+│               ├── ModelAliases.kt       # 共享模型别名与归组
 │               └── ApiKeysTab.kt         # API 密钥管理
 ├── gradle/libs.versions.toml             # 版本目录
 ├── build.gradle.kts

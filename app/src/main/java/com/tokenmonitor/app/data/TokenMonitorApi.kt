@@ -3,15 +3,23 @@ package com.tokenmonitor.app.data
 import com.tokenmonitor.app.data.model.DevicesResponse
 import com.tokenmonitor.app.data.model.HealthResponse
 import com.tokenmonitor.app.data.model.HistoryResponse
+import com.tokenmonitor.app.data.model.ModelAliasesResponse
 import com.tokenmonitor.app.data.model.SseStatsEvent
 import com.tokenmonitor.app.data.model.StatsResponse
+import com.tokenmonitor.app.data.model.SubscriptionsResponse
+import com.tokenmonitor.app.data.model.SubscriptionsWriteRequest
 import io.ktor.client.HttpClient
+import io.ktor.client.plugins.HttpTimeout
 import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.client.request.delete
 import io.ktor.client.request.get
 import io.ktor.client.request.header
+import io.ktor.client.request.put
+import io.ktor.client.request.setBody
 import io.ktor.client.statement.bodyAsChannel
 import io.ktor.client.statement.bodyAsText
+import io.ktor.http.ContentType
+import io.ktor.http.contentType
 import io.ktor.serialization.kotlinx.json.json
 import io.ktor.utils.io.readUTF8Line
 import kotlinx.coroutines.flow.Flow
@@ -23,6 +31,9 @@ class TokenMonitorApi(
     private val secret: String
 ) {
     private val httpClient = HttpClient {
+        install(HttpTimeout) {
+            socketTimeoutMillis = 45_000
+        }
         install(ContentNegotiation) {
             json(Json {
                 ignoreUnknownKeys = true
@@ -68,6 +79,32 @@ class TokenMonitorApi(
         }.bodyAsText().let { json.decodeFromString<HistoryResponse>(it) }
     }
 
+    suspend fun getModelAliases(): Result<ModelAliasesResponse> = runCatching {
+        httpClient.get("$baseUrl/api/sync/settings/modelAliases") {
+            addAuth(this)
+        }.bodyAsText().let { json.decodeFromString<ModelAliasesResponse>(it) }
+    }
+
+    suspend fun getSubscriptions(): Result<SubscriptionsResponse> = runCatching {
+        httpClient.get("$baseUrl/api/subscriptions") {
+            addAuth(this)
+        }.bodyAsText().let { json.decodeFromString<SubscriptionsResponse>(it) }
+    }
+
+    suspend fun putSubscriptions(request: SubscriptionsWriteRequest): Result<SubscriptionsResponse> = runCatching {
+        val response = httpClient.put("$baseUrl/api/subscriptions") {
+            addAuth(this)
+            contentType(ContentType.Application.Json)
+            setBody(request)
+        }
+        val text = response.bodyAsText()
+        if (response.status.value == 409) throw SubscriptionConflictException()
+        if (response.status.value !in 200..299) {
+            throw IllegalStateException("HTTP ${response.status.value}: ${text.take(200)}")
+        }
+        json.decodeFromString<SubscriptionsResponse>(text)
+    }
+
     suspend fun deleteDevice(deviceId: String): Result<Unit> = runCatching {
         httpClient.delete("$baseUrl/api/devices/${java.net.URLEncoder.encode(deviceId, "UTF-8")}") {
             addAuth(this)
@@ -78,24 +115,30 @@ class TokenMonitorApi(
         try {
             httpClient.get("$baseUrl/api/stats/stream") {
                 addAuth(this)
+                // v2 lets the hub send lightweight freshness frames instead of a
+                // full stats snapshot for timestamp-only ingests.
+                header("x-token-monitor-stream", "2")
+                header("Accept", "text/event-stream")
             }.let { response ->
                 val channel = response.bodyAsChannel()
+                var eventType = ""
                 while (!channel.isClosedForRead) {
                     val line = channel.readUTF8Line() ?: break
                     when {
-                        line.startsWith("event: ") -> { /* track event type */ }
+                        line.startsWith("event: ") -> eventType = line.removePrefix("event: ").trim()
                         line.startsWith("data: ") -> {
                             val data = line.removePrefix("data: ")
                             try {
                                 val event = json.decodeFromString<SseStatsEvent>(data)
-                                emit(event)
+                                emit(if (event.type.isBlank()) event.copy(type = eventType) else event)
                             } catch (_: Exception) { }
                         }
+                        line.isBlank() -> eventType = ""
                     }
                 }
             }
         } catch (_: Exception) {
-            // Stream ended or connection error
+            // Stream ended or connection error; the caller reconnects.
         }
     }
 
@@ -103,3 +146,5 @@ class TokenMonitorApi(
         httpClient.close()
     }
 }
+
+class SubscriptionConflictException : IllegalStateException("stale_write")

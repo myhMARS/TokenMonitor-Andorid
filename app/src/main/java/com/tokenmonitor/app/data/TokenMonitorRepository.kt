@@ -3,8 +3,11 @@ package com.tokenmonitor.app.data
 import com.tokenmonitor.app.data.model.DevicesResponse
 import com.tokenmonitor.app.data.model.HealthResponse
 import com.tokenmonitor.app.data.model.HistoryResponse
+import com.tokenmonitor.app.data.model.ModelAliasesResponse
 import com.tokenmonitor.app.data.model.SseStatsEvent
 import com.tokenmonitor.app.data.model.StatsResponse
+import com.tokenmonitor.app.data.model.SubscriptionsResponse
+import com.tokenmonitor.app.data.model.SubscriptionsWriteRequest
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.emptyFlow
 
@@ -33,6 +36,18 @@ class TokenMonitorRepository {
 
     suspend fun getHistory(): Result<HistoryResponse> {
         return api?.getHistory() ?: Result.failure(IllegalStateException("Not configured"))
+    }
+
+    suspend fun getModelAliases(): Result<ModelAliasesResponse> {
+        return api?.getModelAliases() ?: Result.failure(IllegalStateException("Not configured"))
+    }
+
+    suspend fun getSubscriptions(): Result<SubscriptionsResponse> {
+        return api?.getSubscriptions() ?: Result.failure(IllegalStateException("Not configured"))
+    }
+
+    suspend fun putSubscriptions(request: SubscriptionsWriteRequest): Result<SubscriptionsResponse> {
+        return api?.putSubscriptions(request) ?: Result.failure(IllegalStateException("Not configured"))
     }
 
     suspend fun deleteDevice(deviceId: String): Result<Unit> {
