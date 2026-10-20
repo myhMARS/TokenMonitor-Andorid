@@ -91,6 +91,13 @@ private val validationClient by lazy {
     }
 }
 
+private data class PendingKeyDelete(
+    val platform: String,
+    val index: Int,
+    val name: String,
+    val key: String
+)
+
 private var autoValidated = false
 private val persistedResults = mutableMapOf<String, String>()
 private val persistedValidating = mutableSetOf<String>()
@@ -105,7 +112,7 @@ fun ApiKeysTab(keyAction: String? = null, onKeyActionHandled: () -> Unit = {}, i
     }
     var searchQuery by remember { mutableStateOf("") }
     var showAddDialog by remember { mutableStateOf(false) }
-    var showDeleteConfirm by remember { mutableStateOf<Pair<String, String>?>(null) }
+    var showDeleteConfirm by remember { mutableStateOf<PendingKeyDelete?>(null) }
     var expandedPlatforms by remember { mutableStateOf(data.platforms.keys) }
     var showImportConfirm by remember { mutableStateOf<String?>(null) }
 
@@ -261,18 +268,34 @@ fun ApiKeysTab(keyAction: String? = null, onKeyActionHandled: () -> Unit = {}, i
         )
     }
 
-    showDeleteConfirm?.let { (platform, keyName) ->
+    showDeleteConfirm?.let { pending ->
+        val keyPreview = "${pending.key.take(8)}…${pending.key.takeLast(4)}"
         AlertDialog(
             onDismissRequest = { showDeleteConfirm = null },
             title = { Text(stringResource(R.string.apikeys_delete_title)) },
-            text = { Text(stringResource(R.string.apikeys_delete_msg, keyName, platform)) },
+            text = { Text(stringResource(R.string.apikeys_delete_msg, "${pending.name} · $keyPreview", pending.platform)) },
             confirmButton = {
                 TextButton(onClick = {
                     val updated = data.platforms.toMutableMap()
-                    val pkeys = updated[platform]
+                    val pkeys = updated[pending.platform]
                     if (pkeys != null) {
-                        val f = pkeys.keys.filter { it.name != keyName }
-                        if (f.isEmpty()) updated.remove(platform) else updated[platform] = PlatformKeys(f)
+                        val remaining = pkeys.keys.toMutableList()
+                        // Entries can share a name; remove exactly the clicked one.
+                        // Fall back to the stored key if the list moved while the
+                        // dialog was open.
+                        val index = if (pending.index in remaining.indices &&
+                            remaining[pending.index].key == pending.key
+                        ) {
+                            pending.index
+                        } else {
+                            remaining.indexOfFirst { it.key == pending.key && it.name == pending.name }
+                        }
+                        if (index >= 0) remaining.removeAt(index)
+                        if (remaining.isEmpty()) {
+                            updated.remove(pending.platform)
+                        } else {
+                            updated[pending.platform] = PlatformKeys(remaining)
+                        }
                     }
                     persist(PlatformsData(updated))
                     showDeleteConfirm = null
@@ -327,7 +350,7 @@ fun ApiKeysTab(keyAction: String? = null, onKeyActionHandled: () -> Unit = {}, i
                                 Text(if (isExpanded) "▾" else "▸", style = MaterialTheme.typography.bodyMedium)
                             }
                             if (isExpanded) {
-                                pkeys.keys.forEach { entry ->
+                                pkeys.keys.forEachIndexed { entryIndex, entry ->
                                     Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                                         Column(modifier = Modifier.weight(1f)) {
                                             Text(entry.name, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Medium)
@@ -364,7 +387,9 @@ fun ApiKeysTab(keyAction: String? = null, onKeyActionHandled: () -> Unit = {}, i
                                                 }
                                             }
                                         }
-                                        IconButton(onClick = { showDeleteConfirm = Pair(platform, entry.name) }, modifier = Modifier.size(32.dp)) {
+                                        IconButton(onClick = {
+                                            showDeleteConfirm = PendingKeyDelete(platform, entryIndex, entry.name, entry.key)
+                                        }, modifier = Modifier.size(32.dp)) {
                                             Icon(Icons.Default.Delete, stringResource(R.string.apikeys_delete_desc), tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(16.dp))
                                         }
                                     }
