@@ -656,7 +656,7 @@ fun ModelUsageRow(rank: Int, model: String, tokens: Long, cost: Double?, share: 
         )
         Spacer(modifier = Modifier.width(8.dp))
         Text(
-            stringResource(R.string.overview_share_format, share * 100),
+            formatShareFraction(share.toDouble()),
             style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.width(42.dp),
@@ -1608,67 +1608,38 @@ fun ModelsTab(allTime: UsagePeriod?) {
     val modelCacheReads = ModelAliasRegistry.groupLongs(rawModels, allTime?.modelCacheReads)
 
     if (models.isEmpty()) {
-        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Icon(Icons.Default.ModelTraining, contentDescription = null, modifier = Modifier.size(48.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
-                Spacer(modifier = Modifier.height(8.dp))
-                Text(stringResource(R.string.models_no_data), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-        }
+        EmptyTabState(
+            icon = Icons.Default.ModelTraining,
+            title = stringResource(R.string.models_no_data)
+        )
         return
     }
 
-    val totalTokens = models.values.sum().toFloat()
-
-    LazyColumn(
-        modifier = Modifier.fillMaxSize(),
-        contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp)
-    ) {
-        items(models.entries.sortedByDescending { it.value }.toList()) { (model, tokens) ->
+    val rows = models.entries.sortedByDescending { it.value }.map { (model, tokens) ->
         val vendor = modelVendorFor(model)
-        val vendorLabel = if (vendor != null) toolLabel(vendor) else model
-        Card(modifier = Modifier.fillMaxWidth()) {
-            Column(modifier = Modifier.padding(16.dp)) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.weight(1f)
-                    ) {
-                        ToolAvatar(tool = vendor ?: model, label = vendorLabel, color = toolColor(vendor ?: model), size = 28.dp)
-                        Spacer(modifier = Modifier.width(10.dp))
-                        Text(model, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    }
-                    Text(formatNumber(tokens), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
-                }
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        modelCosts[model]?.let { cost ->
-                            Text(formatCost(cost), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.tertiary)
-                        }
-                        modelOutputs[model]?.let { output ->
-                            Text(stringResource(R.string.models_output_format, formatNumber(output)), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        }
-                        modelCacheReads[model]?.let { cache ->
-                            Text(stringResource(R.string.models_cache_format, formatNumber(cache)), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        }
-                    }
-                    Spacer(modifier = Modifier.height(8.dp))
-                    ProgressBar(
-                        ratio = tokens / totalTokens,
-                        color = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.fillMaxWidth().height(8.dp)
-                    )
-                }
-            }
-        }
+        UsageRowData(
+            avatarTool = vendor ?: model,
+            avatarLabel = if (vendor != null) toolLabel(vendor) else model,
+            title = model,
+            color = toolColor(vendor ?: model),
+            tokens = tokens,
+            cost = modelCosts[model],
+            output = modelOutputs[model],
+            cacheRead = modelCacheReads[model]
+        )
     }
+    val totalTokens = models.values.sum().coerceAtLeast(1L)
+
+    UsageBreakdownList(
+        summary = stringResource(
+            R.string.models_summary_format,
+            rows.size,
+            formatCompactNumber(totalTokens),
+            formatCost(modelCosts.values.sum())
+        ),
+        rows = rows,
+        totalTokens = totalTokens
+    )
 }
 
 @Composable
@@ -1680,66 +1651,179 @@ fun ToolsTab(allTime: UsagePeriod?) {
     val toolCacheReads = allTime?.clientCacheReads ?: emptyMap()
 
     if (tools.isEmpty()) {
-        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Icon(Icons.Default.Language, contentDescription = null, modifier = Modifier.size(48.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
-                Spacer(modifier = Modifier.height(8.dp))
-                Text(stringResource(R.string.tools_no_data), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-        }
+        EmptyTabState(
+            icon = Icons.Default.Language,
+            title = stringResource(R.string.tools_no_data)
+        )
         return
     }
 
-    val totalTokens = tools.values.sum().toFloat()
+    val rows = tools.entries.sortedByDescending { it.value }.map { (tool, tokens) ->
+        UsageRowData(
+            avatarTool = tool,
+            avatarLabel = toolLabel(tool),
+            title = toolLabel(tool),
+            color = toolColor(tool),
+            tokens = tokens,
+            cost = toolCosts[tool],
+            output = toolOutputs[tool],
+            cacheRead = toolCacheReads[tool]
+        )
+    }
+    val totalTokens = tools.values.sum().coerceAtLeast(1L)
 
+    UsageBreakdownList(
+        summary = stringResource(
+            R.string.tools_summary_format,
+            rows.size,
+            formatCompactNumber(totalTokens),
+            formatCost(toolCosts.values.sum())
+        ),
+        rows = rows,
+        totalTokens = totalTokens
+    )
+}
+
+private data class UsageRowData(
+    val avatarTool: String,
+    val avatarLabel: String,
+    val title: String,
+    val color: Color,
+    val tokens: Long,
+    val cost: Double?,
+    val output: Long?,
+    val cacheRead: Long?
+)
+
+@Composable
+private fun EmptyTabState(icon: androidx.compose.ui.graphics.vector.ImageVector, title: String) {
+    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Icon(icon, contentDescription = null, modifier = Modifier.size(48.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(title, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
+}
+
+@Composable
+private fun UsageBreakdownList(summary: String, rows: List<UsageRowData>, totalTokens: Long) {
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
-        contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp)
+        contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp)
     ) {
-        items(tools.entries.sortedByDescending { it.value }.toList()) { (tool, tokens) ->
-            val label = toolLabel(tool)
-            val color = toolColor(tool)
+        item {
+            Text(
+                summary,
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(horizontal = 4.dp, vertical = 6.dp)
+            )
+        }
+        item {
             Card(modifier = Modifier.fillMaxWidth()) {
-                Column(modifier = Modifier.padding(16.dp)) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.weight(1f)
-                        ) {
-                            ToolAvatar(tool = tool, label = label, color = color, size = 32.dp)
-                            Spacer(modifier = Modifier.width(10.dp))
-                            Text(label, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Column {
+                    rows.forEachIndexed { index, row ->
+                        if (index > 0) {
+                            HorizontalDivider(modifier = Modifier.padding(horizontal = 14.dp))
                         }
-                        Text(formatNumber(tokens), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
+                        UsageRankRow(rank = index + 1, row = row, totalTokens = totalTokens)
                     }
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        toolCosts[tool]?.let { cost ->
-                            Text(formatCost(cost), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.tertiary)
-                        }
-                        toolOutputs[tool]?.let { output ->
-                            Text(stringResource(R.string.tools_output_format, formatNumber(output)), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        }
-                        toolCacheReads[tool]?.let { cache ->
-                            Text(stringResource(R.string.tools_cache_format, formatNumber(cache)), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun formatShareFraction(fraction: Double): String =
+    if (fraction > 0.0 && fraction < 0.0005) {
+        stringResource(R.string.overview_share_small)
+    } else {
+        stringResource(R.string.overview_share_format, fraction * 100)
+    }
+
+@Composable
+private fun UsageRankRow(rank: Int, row: UsageRowData, totalTokens: Long) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 14.dp, vertical = 10.dp)
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                rank.toString(),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.width(20.dp)
+            )
+            ToolAvatar(tool = row.avatarTool, label = row.avatarLabel, color = row.color, size = 22.dp)
+            Spacer(modifier = Modifier.width(8.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    row.title,
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.Medium,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                val detail = buildList {
+                    row.output?.let {
+                        add(stringResource(R.string.models_output_format, formatCompactNumber(it)))
                     }
-                    Spacer(modifier = Modifier.height(8.dp))
-                    ProgressBar(
-                        ratio = tokens / totalTokens,
-                        color = color,
-                        modifier = Modifier.fillMaxWidth().height(8.dp)
+                    row.cacheRead?.let {
+                        add(stringResource(R.string.models_cache_format, formatCompactNumber(it)))
+                    }
+                }.joinToString(" · ")
+                if (detail.isNotBlank()) {
+                    Text(
+                        detail,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
+            Spacer(modifier = Modifier.width(8.dp))
+            Column(horizontalAlignment = Alignment.End) {
+                Text(
+                    formatCompactNumber(row.tokens),
+                    style = MaterialTheme.typography.bodySmall,
+                    fontWeight = FontWeight.Bold
+                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    row.cost?.let {
+                        Text(
+                            formatCost(it),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.tertiary
+                        )
+                        Text(
+                            " · ",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Text(
+                        formatShareFraction(row.tokens.toDouble() / totalTokens),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
             }
         }
+        Spacer(modifier = Modifier.height(6.dp))
+        LinearProgressIndicator(
+            progress = { (row.tokens.toFloat() / totalTokens).coerceIn(0f, 1f) },
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(4.dp),
+            color = row.color,
+            strokeCap = StrokeCap.Butt,
+            gapSize = 0.dp,
+            drawStopIndicator = {}
+        )
     }
 }
 

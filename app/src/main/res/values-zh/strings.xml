@@ -349,4 +349,7 @@
     <string name="apikeys_status_unverified">未验证</string>
     <string name="apikeys_clear_search">清除搜索</string>
     <string name="apikeys_no_results">没有匹配的密钥</string>
+    <string name="models_summary_format">%1$d 个模型 · %2$s token · %3$s</string>
+    <string name="tools_summary_format">%1$d 个工具 · %2$s token · %3$s</string>
+    <string name="overview_share_small" formatted="false">&lt;0.1%</string>
 </resources>

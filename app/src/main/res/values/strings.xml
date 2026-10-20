@@ -349,4 +349,7 @@
     <string name="apikeys_status_unverified">Unverified</string>
     <string name="apikeys_clear_search">Clear search</string>
     <string name="apikeys_no_results">No matching keys</string>
+    <string name="models_summary_format">%1$d models · %2$s tokens · %3$s</string>
+    <string name="tools_summary_format">%1$d tools · %2$s tokens · %3$s</string>
+    <string name="overview_share_small" formatted="false">&lt;0.1%</string>
 </resources>
