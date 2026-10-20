@@ -129,6 +129,8 @@ fun ApiKeysTab(keyAction: String? = null, onKeyActionHandled: () -> Unit = {}, i
         val id: String, val name: String,
         val baseUrl: String, val verifyUrl: String = "", val balanceUrl: String = "",
         val authHeader: String = "Bearer {api_key}",
+        val authHeaderName: String = "Authorization",
+        val extraHeaders: List<Pair<String, String>> = emptyList(),
         val usePost: Boolean = false,
     ) {
         val validationUrl: String get() = when {
@@ -146,8 +148,11 @@ fun ApiKeysTab(keyAction: String? = null, onKeyActionHandled: () -> Unit = {}, i
         PlatformDef("moonshot", "Moonshot", "https://api.moonshot.cn", balanceUrl = "/v1/users/me/balance"),
         PlatformDef("zhipu", "Zhipu GLM", "https://open.bigmodel.cn/api/paas/v4", verifyUrl = "/models", authHeader = "{api_key}"),
         PlatformDef("minimax", "MiniMax", "https://api.minimaxi.com", verifyUrl = "/v1/models"),
-        PlatformDef("anthropic", "Anthropic", "https://api.anthropic.com", verifyUrl = "/v1/models"),
-        PlatformDef("google", "Google Gemini", "https://generativelanguage.googleapis.com", verifyUrl = "/v1beta/models"),
+        PlatformDef("anthropic", "Anthropic", "https://api.anthropic.com", verifyUrl = "/v1/models",
+            authHeaderName = "x-api-key", authHeader = "{api_key}",
+            extraHeaders = listOf("anthropic-version" to "2023-06-01")),
+        PlatformDef("google", "Google Gemini", "https://generativelanguage.googleapis.com", verifyUrl = "/v1beta/models",
+            authHeaderName = "x-goog-api-key", authHeader = "{api_key}"),
         PlatformDef("qwen", "Qwen", "https://dashscope.aliyuncs.com/compatible-mode", verifyUrl = "/v1/models"),
         PlatformDef("xai", "xAI", "https://api.x.ai", verifyUrl = "/v1/models"),
         PlatformDef("mistral", "Mistral", "https://api.mistral.ai", verifyUrl = "/v1/models"),
@@ -165,17 +170,24 @@ fun ApiKeysTab(keyAction: String? = null, onKeyActionHandled: () -> Unit = {}, i
         if (force) { persistedResults.remove(tag); validationVersion++ }
         persistedValidating += tag
         validationVersion++
-        val authValue = platform.authHeader.replace("{api_key}", key)
+        val requestHeaders = buildList {
+            add(platform.authHeaderName to platform.authHeader.replace("{api_key}", key))
+            platform.extraHeaders.forEach { (name, value) ->
+                add(name to value.replace("{api_key}", key))
+            }
+        }
         val result = try {
             val resp = withContext(Dispatchers.IO) {
                 if (platform.usePost) {
                     validationClient.post(platform.validationUrl) {
-                        header("Authorization", authValue)
+                        requestHeaders.forEach { (name, value) -> header(name, value) }
                         contentType(ContentType.Application.Json)
                         setBody("""{"model":"gpt-3.5-turbo","messages":[{"role":"user","content":"hi"}],"max_tokens":1}""")
                     }
                 } else {
-                    validationClient.get(platform.validationUrl) { header("Authorization", authValue) }
+                    validationClient.get(platform.validationUrl) {
+                        requestHeaders.forEach { (name, value) -> header(name, value) }
+                    }
                 }
             }
             when {
