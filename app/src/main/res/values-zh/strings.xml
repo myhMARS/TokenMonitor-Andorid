@@ -332,4 +332,12 @@
     <string name="setup_error_local_network_denied">Android 17 需要“附近的设备”权限才能访问局域网 Hub。请在系统设置中允许本应用后重试。</string>
     <string name="sessions_untitled_format">会话 %s</string>
     <string name="sessions_metric_msgs_format">消息 %d</string>
+    <string name="overview_breakdown_format">输出 %1$s · 缓存读 %2$s · 缓存写 %3$s</string>
+    <string name="overview_share_format">%.1f%%</string>
+    <string name="overview_hub_details_title">Hub 详情</string>
+    <string name="overview_hub_runtime_label">运行时</string>
+    <string name="overview_hub_server_time">服务器时间</string>
+    <string name="overview_hub_build_label">构建</string>
+    <string name="overview_hub_today_label">今日截止</string>
+    <string name="overview_hub_stale_label">离线阈值</string>
 </resources>

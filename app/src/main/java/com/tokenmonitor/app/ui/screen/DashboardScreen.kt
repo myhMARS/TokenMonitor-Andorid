@@ -44,6 +44,7 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Devices
 import androidx.compose.material.icons.filled.FileOpen
 import androidx.compose.material.icons.filled.History
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.Logout
 import androidx.compose.material.icons.filled.MoreVert
@@ -388,9 +389,17 @@ fun OverviewTab(
                         Spacer(modifier = Modifier.height(8.dp))
                         val groupedModels = ModelAliasRegistry.groupModels(today.models)
                         val groupedCosts = ModelAliasRegistry.groupCosts(today.models, today.modelCosts)
-                        groupedModels.entries.sortedByDescending { it.value }.take(10).forEach { (model, tokens) ->
-                            ModelUsageRow(model, tokens, groupedCosts[model])
-                        }
+                        val modelTotal = groupedModels.values.sum().coerceAtLeast(1L)
+                        groupedModels.entries.sortedByDescending { it.value }.take(10)
+                            .forEachIndexed { index, (model, tokens) ->
+                                ModelUsageRow(
+                                    rank = index + 1,
+                                    model = model,
+                                    tokens = tokens,
+                                    cost = groupedCosts[model],
+                                    share = tokens.toFloat() / modelTotal
+                                )
+                            }
                     }
                 }
             }
@@ -407,57 +416,97 @@ private fun HubStatusCard(
     staleAfterMs: Long?,
     periodWindows: PeriodWindows?
 ) {
-    Card(modifier = Modifier.fillMaxWidth()) {
-        Column(
-            modifier = Modifier.padding(12.dp),
-            verticalArrangement = Arrangement.spacedBy(4.dp)
+    var showDetails by remember { mutableStateOf(false) }
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        onClick = { showDetails = true }
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 14.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Default.Speed, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(16.dp))
-                Spacer(modifier = Modifier.width(8.dp))
+            Icon(
+                Icons.Default.Speed,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(16.dp)
+            )
+            Spacer(modifier = Modifier.width(8.dp))
+            Text(
+                hubRuntimeLabel(hubRuntime, hubVersion),
+                style = MaterialTheme.typography.labelSmall,
+                fontWeight = FontWeight.Medium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.weight(1f)
+            )
+            if (hubNow.isNotBlank()) {
                 Text(
-                    hubRuntimeLabel(hubRuntime, hubVersion),
-                    style = MaterialTheme.typography.labelSmall,
-                    fontWeight = FontWeight.Medium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                Spacer(modifier = Modifier.weight(1f))
-                if (hubNow.isNotBlank()) {
-                    Text(
-                        formatDateTime(hubNow),
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-            }
-            if (hubBuild != null) {
-                val core = shortBuildId(hubBuild.coreBuildId)
-                val runtime = shortBuildId(hubBuild.runtimeBuildId)
-                if (core != null || runtime != null) {
-                    Text(
-                        stringResource(R.string.overview_build_format, core ?: "-", runtime ?: "-"),
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-            }
-            periodWindows?.today?.endsAt?.takeIf { it.isNotBlank() }?.let { endsAt ->
-                val zone = periodWindows.timeZone?.takeIf { it.isNotBlank() }
-                Text(
-                    if (zone != null) stringResource(R.string.overview_today_ends_tz_format, formatDateTime(endsAt), zone)
-                    else stringResource(R.string.overview_today_ends_format, formatDateTime(endsAt)),
+                    formatDateTime(hubNow),
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
+                Spacer(modifier = Modifier.width(6.dp))
             }
-            staleAfterMs?.takeIf { it > 0 }?.let { threshold ->
-                Text(
-                    stringResource(R.string.overview_stale_after_format, threshold / 60000),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
+            Icon(
+                Icons.Default.Info,
+                contentDescription = stringResource(R.string.overview_hub_details_title),
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(14.dp)
+            )
         }
+    }
+
+    if (showDetails) {
+        AlertDialog(
+            onDismissRequest = { showDetails = false },
+            title = { Text(stringResource(R.string.overview_hub_details_title)) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    SummaryRow(
+                        stringResource(R.string.overview_hub_runtime_label),
+                        hubRuntimeLabel(hubRuntime, hubVersion)
+                    )
+                    if (hubNow.isNotBlank()) {
+                        SummaryRow(
+                            stringResource(R.string.overview_hub_server_time),
+                            formatDateTime(hubNow)
+                        )
+                    }
+                    if (hubBuild != null) {
+                        val core = shortBuildId(hubBuild.coreBuildId)
+                        val runtime = shortBuildId(hubBuild.runtimeBuildId)
+                        if (core != null || runtime != null) {
+                            SummaryRow(
+                                stringResource(R.string.overview_hub_build_label),
+                                stringResource(R.string.overview_build_format, core ?: "-", runtime ?: "-")
+                            )
+                        }
+                    }
+                    periodWindows?.today?.endsAt?.takeIf { it.isNotBlank() }?.let { endsAt ->
+                        val zone = periodWindows.timeZone?.takeIf { it.isNotBlank() }
+                        SummaryRow(
+                            stringResource(R.string.overview_hub_today_label),
+                            if (zone != null) stringResource(R.string.overview_today_ends_tz_format, formatDateTime(endsAt), zone)
+                            else stringResource(R.string.overview_today_ends_format, formatDateTime(endsAt))
+                        )
+                    }
+                    staleAfterMs?.takeIf { it > 0 }?.let { threshold ->
+                        SummaryRow(
+                            stringResource(R.string.overview_hub_stale_label),
+                            stringResource(R.string.overview_stale_after_format, threshold / 60000)
+                        )
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showDetails = false }) {
+                    Text(stringResource(R.string.session_close))
+                }
+            }
+        )
     }
 }
 
@@ -488,32 +537,53 @@ fun PeriodCard(title: String, period: UsagePeriod?, color: Color) {
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = color.copy(alpha = 0.05f))
     ) {
-        Column(modifier = Modifier.padding(12.dp)) {
-            Text(title, style = MaterialTheme.typography.titleSmall, color = color)
-            Spacer(modifier = Modifier.height(6.dp))
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    StatItem(stringResource(R.string.stat_tokens), formatNumber(period?.totalTokens ?: 0), Modifier.weight(1f))
-                    StatItem(stringResource(R.string.stat_cost), formatCost(period?.costUsd ?: 0.0), Modifier.weight(1f))
-                }
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    StatItem(stringResource(R.string.stat_output), formatNumber(period?.outputTokens ?: 0), Modifier.weight(1f))
-                    StatItem(stringResource(R.string.stat_cache), formatNumber(period?.cacheReadTokens ?: 0), Modifier.weight(1f))
-                    StatItem(stringResource(R.string.stat_cache_write), formatNumber(period?.cacheWriteTokens ?: 0), Modifier.weight(1f))
-                }
+        Column(modifier = Modifier.padding(14.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(title, style = MaterialTheme.typography.titleSmall, color = color)
+                Text(
+                    formatCost(period?.costUsd ?: 0.0),
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.tertiary
+                )
             }
+            Spacer(modifier = Modifier.height(4.dp))
+            Row(verticalAlignment = Alignment.Bottom) {
+                Text(
+                    formatCompactNumber(period?.totalTokens ?: 0),
+                    style = MaterialTheme.typography.headlineSmall,
+                    fontWeight = FontWeight.Bold
+                )
+                Spacer(modifier = Modifier.width(6.dp))
+                Text(
+                    stringResource(R.string.stat_tokens),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(bottom = 4.dp)
+                )
+            }
+            Spacer(modifier = Modifier.height(6.dp))
+            Text(
+                stringResource(
+                    R.string.overview_breakdown_format,
+                    formatCompactNumber(period?.outputTokens ?: 0),
+                    formatCompactNumber(period?.cacheReadTokens ?: 0),
+                    formatCompactNumber(period?.cacheWriteTokens ?: 0)
+                ),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 2
+            )
             val unpriced = period?.unpricedTokens ?: 0
             val unclassified = period?.unclassifiedTokens ?: 0
             if (unpriced > 0) {
                 Spacer(modifier = Modifier.height(6.dp))
                 Text(
-                    stringResource(R.string.overview_unpriced_hint, formatNumber(unpriced)),
+                    stringResource(R.string.overview_unpriced_hint, formatCompactNumber(unpriced)),
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.tertiary
                 )
@@ -521,7 +591,7 @@ fun PeriodCard(title: String, period: UsagePeriod?, color: Color) {
             if (unclassified > 0) {
                 Spacer(modifier = Modifier.height(2.dp))
                 Text(
-                    stringResource(R.string.overview_unclassified_hint, formatNumber(unclassified)),
+                    stringResource(R.string.overview_unclassified_hint, formatCompactNumber(unclassified)),
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -549,22 +619,47 @@ fun StatItem(label: String, value: String, modifier: Modifier = Modifier) {
 }
 
 @Composable
-fun ModelUsageRow(model: String, tokens: Long, cost: Double?) {
+fun ModelUsageRow(rank: Int, model: String, tokens: Long, cost: Double?, share: Float) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = 4.dp),
-        horizontalArrangement = Arrangement.SpaceBetween,
+            .padding(vertical = 3.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Text(model, style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
-        Row {
-            Text(formatNumber(tokens), style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Medium)
-            if (cost != null) {
-                Spacer(modifier = Modifier.width(8.dp))
-                Text(formatCost(cost), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.tertiary)
-            }
-        }
+        Text(
+            rank.toString(),
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.width(18.dp)
+        )
+        Text(
+            model,
+            style = MaterialTheme.typography.bodySmall,
+            modifier = Modifier.weight(1f),
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+        Text(
+            formatCompactNumber(tokens),
+            style = MaterialTheme.typography.bodySmall,
+            fontWeight = FontWeight.Medium
+        )
+        Spacer(modifier = Modifier.width(8.dp))
+        Text(
+            cost?.let { formatCost(it) } ?: "",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.tertiary,
+            modifier = Modifier.width(58.dp),
+            textAlign = androidx.compose.ui.text.style.TextAlign.End
+        )
+        Spacer(modifier = Modifier.width(8.dp))
+        Text(
+            stringResource(R.string.overview_share_format, share * 100),
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.width(42.dp),
+            textAlign = androidx.compose.ui.text.style.TextAlign.End
+        )
     }
 }
 

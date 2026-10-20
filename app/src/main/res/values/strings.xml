@@ -332,4 +332,12 @@
     <string name="setup_error_local_network_denied">Android 17 requires the Nearby devices permission to reach a hub on your LAN. Allow it for this app in system settings, then connect again.</string>
     <string name="sessions_untitled_format">Session %s</string>
     <string name="sessions_metric_msgs_format">Msgs %d</string>
+    <string name="overview_breakdown_format">Output %1$s · Cache read %2$s · Cache write %3$s</string>
+    <string name="overview_share_format">%.1f%%</string>
+    <string name="overview_hub_details_title">Hub Details</string>
+    <string name="overview_hub_runtime_label">Runtime</string>
+    <string name="overview_hub_server_time">Server time</string>
+    <string name="overview_hub_build_label">Build</string>
+    <string name="overview_hub_today_label">Today ends</string>
+    <string name="overview_hub_stale_label">Offline threshold</string>
 </resources>
