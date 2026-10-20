@@ -88,6 +88,8 @@ cd TokenMonitor-Andorid
 
 编译产物位于 `app/build/outputs/apk/debug/app-debug.apk`。
 
+> debug 构建使用仓库内的 `keystore/debug.keystore`（标准 debug 口令 `android`，仅用于本地与 CI 调试签名），因此所有产物的签名一致，可互相覆盖安装。正式发布请配置独立的 release keystore。
+
 ### 准备 Hub 后端
 
 使用前需运行 Token Monitor Hub 实例：

@@ -34,6 +34,21 @@ android {
         sourceCompatibility = JavaVersion.VERSION_11
         targetCompatibility = JavaVersion.VERSION_11
     }
+    signingConfigs {
+        // Debug builds are signed with a key checked into the repository so CI
+        // and local builds produce the same signature. These are the standard
+        // non-secret debug credentials; use a private release key for public
+        // distribution.
+        val stableDebug = rootProject.file("keystore/debug.keystore")
+        if (stableDebug.exists()) {
+            getByName("debug") {
+                storeFile = stableDebug
+                storePassword = "android"
+                keyAlias = "androiddebugkey"
+                keyPassword = "android"
+            }
+        }
+    }
     buildFeatures {
         compose = true
     }
