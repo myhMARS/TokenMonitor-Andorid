@@ -14,11 +14,13 @@ import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.client.request.delete
 import io.ktor.client.request.get
 import io.ktor.client.request.header
+import io.ktor.client.request.prepareRequest
 import io.ktor.client.request.put
 import io.ktor.client.request.setBody
 import io.ktor.client.statement.bodyAsChannel
 import io.ktor.client.statement.bodyAsText
 import io.ktor.http.ContentType
+import io.ktor.http.HttpMethod
 import io.ktor.http.contentType
 import io.ktor.serialization.kotlinx.json.json
 import io.ktor.utils.io.readUTF8Line
@@ -113,13 +115,17 @@ class TokenMonitorApi(
 
     fun statsStream(): Flow<SseStatsEvent> = flow {
         try {
-            httpClient.get("$baseUrl/api/stats/stream") {
+            // HttpClient.get() saves the whole response body (HttpStatement
+            // execute()), which never completes for an endless SSE stream.
+            // prepareRequest + the streaming execute() keeps the body live.
+            httpClient.prepareRequest("$baseUrl/api/stats/stream") {
+                method = HttpMethod.Get
                 addAuth(this)
                 // v2 lets the hub send lightweight freshness frames instead of a
                 // full stats snapshot for timestamp-only ingests.
                 header("x-token-monitor-stream", "2")
                 header("Accept", "text/event-stream")
-            }.let { response ->
+            }.execute { response ->
                 val channel = response.bodyAsChannel()
                 var eventType = ""
                 while (!channel.isClosedForRead) {
@@ -131,7 +137,8 @@ class TokenMonitorApi(
                             try {
                                 val event = json.decodeFromString<SseStatsEvent>(data)
                                 emit(if (event.type.isBlank()) event.copy(type = eventType) else event)
-                            } catch (_: Exception) { }
+                            } catch (_: Exception) {
+                            }
                         }
                         line.isBlank() -> eventType = ""
                     }
