@@ -164,6 +164,8 @@ fun DashboardScreen(
             R.string.tab_api_keys)
     }
 
+    val apiKeysPage = tabResIds.indexOf(R.string.tab_api_keys)
+
     val aliasResolver = remember(modelAliases, modelAliasGrouping, allTime) {
         buildModelAliasResolver(modelAliases, allTime?.models?.keys.orEmpty(), modelAliasGrouping)
     }
@@ -271,19 +273,19 @@ fun DashboardScreen(
                             HorizontalDivider(modifier = Modifier.padding(horizontal = 12.dp))
                             DropdownMenuItem(
                                 text = { Text(menuAddKey) },
-                                onClick = { keyMenuExpanded = false; currentPage = 7; keyAction = "add" },
+                                onClick = { keyMenuExpanded = false; currentPage = apiKeysPage; keyAction = "add" },
                                 leadingIcon = { Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(18.dp)) },
                                 modifier = Modifier.height(40.dp)
                             )
                             DropdownMenuItem(
                                 text = { Text(menuImport) },
-                                onClick = { keyMenuExpanded = false; currentPage = 7; onImportRequest?.invoke() },
+                                onClick = { keyMenuExpanded = false; currentPage = apiKeysPage; onImportRequest?.invoke() },
                                 leadingIcon = { Icon(Icons.Default.FileOpen, contentDescription = null, modifier = Modifier.size(18.dp)) },
                                 modifier = Modifier.height(40.dp)
                             )
                             DropdownMenuItem(
                                 text = { Text(menuExport) },
-                                onClick = { keyMenuExpanded = false; currentPage = 7; keyAction = "export" },
+                                onClick = { keyMenuExpanded = false; currentPage = apiKeysPage; keyAction = "export" },
                                 leadingIcon = { Icon(Icons.Default.SaveAlt, contentDescription = null, modifier = Modifier.size(18.dp)) },
                                 modifier = Modifier.height(40.dp)
                             )
