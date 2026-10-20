@@ -357,4 +357,6 @@
     <string name="sessions_summary_format">%d 个会话</string>
     <string name="subscriptions_summary_format">%d 个订阅</string>
     <string name="projects_summary_format">%1$d 个项目 · %2$s token · %3$s</string>
+    <string name="overview_summary_format">%1$d 台设备 · 今日 %2$s token · %3$s</string>
+    <string name="trends_summary_line_format">%1$d 个活跃天 · %2$s token · %3$s</string>
 </resources>

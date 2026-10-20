@@ -380,10 +380,11 @@ fun ApiKeysTab(keyAction: String? = null, onKeyActionHandled: () -> Unit = {}, i
     val totalKeys = data.platforms.values.sumOf { it.keys.size }
 
     Column(modifier = Modifier.fillMaxSize()) {
+        TabSummary(stringResource(R.string.apikeys_summary_format, data.platforms.size, totalKeys))
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(start = 16.dp, end = 16.dp, top = 8.dp),
+                .padding(start = 16.dp, end = 16.dp, top = 4.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             OutlinedTextField(
@@ -409,12 +410,6 @@ fun ApiKeysTab(keyAction: String? = null, onKeyActionHandled: () -> Unit = {}, i
                 Icon(Icons.Default.Add, contentDescription = stringResource(R.string.apikeys_add_btn))
             }
         }
-        Text(
-            stringResource(R.string.apikeys_summary_format, data.platforms.size, totalKeys),
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
-            style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
         if (data.platforms.isEmpty()) {
             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {

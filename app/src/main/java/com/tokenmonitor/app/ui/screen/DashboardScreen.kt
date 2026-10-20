@@ -326,7 +326,7 @@ fun DashboardScreen(
                 beyondViewportPageCount = 1
             ) { page ->
                 when (page) {
-                    0 -> OverviewTab(today, month, allTime, hubVersion, hubNow, hubRuntime, hubBuild, staleAfterMs, periodWindows)
+                    0 -> OverviewTab(today, month, allTime, deviceCount, hubVersion, hubNow, hubRuntime, hubBuild, staleAfterMs, periodWindows)
                     1 -> QuotaTab(limits, today)
                     2 -> SubscriptionsTab(
                         subscriptions = subscriptions,
@@ -354,6 +354,7 @@ fun OverviewTab(
     today: UsagePeriod?,
     month: UsagePeriod?,
     allTime: UsagePeriod?,
+    deviceCount: Int,
     hubVersion: Int,
     hubNow: String,
     hubRuntime: String? = null,
@@ -361,47 +362,59 @@ fun OverviewTab(
     staleAfterMs: Long? = null,
     periodWindows: PeriodWindows? = null
 ) {
-    LazyColumn(
-        modifier = Modifier.fillMaxSize(),
-        contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
-    ) {
-        item { PeriodCard(stringResource(R.string.period_today), today, MaterialTheme.colorScheme.primary) }
-        item { PeriodCard(stringResource(R.string.period_month), month, MaterialTheme.colorScheme.tertiary) }
-        item { PeriodCard(stringResource(R.string.period_all_time), allTime, MaterialTheme.colorScheme.secondary) }
+    Column(modifier = Modifier.fillMaxSize()) {
+        TabSummary(
+            stringResource(
+                R.string.overview_summary_format,
+                deviceCount,
+                formatCompactNumber(today?.totalTokens ?: 0),
+                formatCost(today?.costUsd ?: 0.0)
+            )
+        )
+        LazyColumn(
+            modifier = Modifier
+                .fillMaxWidth()
+                .weight(1f),
+            contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 16.dp, vertical = 4.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            item { PeriodCard(stringResource(R.string.period_today), today, MaterialTheme.colorScheme.primary) }
+            item { PeriodCard(stringResource(R.string.period_month), month, MaterialTheme.colorScheme.tertiary) }
+            item { PeriodCard(stringResource(R.string.period_all_time), allTime, MaterialTheme.colorScheme.secondary) }
 
-        if (hubVersion > 0 || hubNow.isNotBlank() || hubBuild != null) {
-            item {
-                HubStatusCard(
-                    hubVersion = hubVersion,
-                    hubNow = hubNow,
-                    hubRuntime = hubRuntime,
-                    hubBuild = hubBuild,
-                    staleAfterMs = staleAfterMs,
-                    periodWindows = periodWindows
-                )
+            if (hubVersion > 0 || hubNow.isNotBlank() || hubBuild != null) {
+                item {
+                    HubStatusCard(
+                        hubVersion = hubVersion,
+                        hubNow = hubNow,
+                        hubRuntime = hubRuntime,
+                        hubBuild = hubBuild,
+                        staleAfterMs = staleAfterMs,
+                        periodWindows = periodWindows
+                    )
+                }
             }
-        }
 
-        if (today != null && !today.models.isNullOrEmpty()) {
-            item {
-                Card(modifier = Modifier.fillMaxWidth()) {
-                    Column(modifier = Modifier.padding(16.dp)) {
-                        Text(stringResource(R.string.overview_model_usage), style = MaterialTheme.typography.titleSmall)
-                        Spacer(modifier = Modifier.height(8.dp))
-                        val groupedModels = ModelAliasRegistry.groupModels(today.models)
-                        val groupedCosts = ModelAliasRegistry.groupCosts(today.models, today.modelCosts)
-                        val modelTotal = groupedModels.values.sum().coerceAtLeast(1L)
-                        groupedModels.entries.sortedByDescending { it.value }.take(10)
-                            .forEachIndexed { index, (model, tokens) ->
-                                ModelUsageRow(
-                                    rank = index + 1,
-                                    model = model,
-                                    tokens = tokens,
-                                    cost = groupedCosts[model],
-                                    share = tokens.toFloat() / modelTotal
-                                )
-                            }
+            if (today != null && !today.models.isNullOrEmpty()) {
+                item {
+                    Card(modifier = Modifier.fillMaxWidth()) {
+                        Column(modifier = Modifier.padding(14.dp)) {
+                            Text(stringResource(R.string.overview_model_usage), style = MaterialTheme.typography.titleSmall)
+                            Spacer(modifier = Modifier.height(8.dp))
+                            val groupedModels = ModelAliasRegistry.groupModels(today.models)
+                            val groupedCosts = ModelAliasRegistry.groupCosts(today.models, today.modelCosts)
+                            val modelTotal = groupedModels.values.sum().coerceAtLeast(1L)
+                            groupedModels.entries.sortedByDescending { it.value }.take(10)
+                                .forEachIndexed { index, (model, tokens) ->
+                                    ModelUsageRow(
+                                        rank = index + 1,
+                                        model = model,
+                                        tokens = tokens,
+                                        cost = groupedCosts[model],
+                                        share = tokens.toFloat() / modelTotal
+                                    )
+                                }
+                        }
                     }
                 }
             }
@@ -684,24 +697,25 @@ fun QuotaTab(limits: List<LimitProvider>, today: UsagePeriod?) {
         return
     }
 
-    LazyColumn(
-        modifier = Modifier.fillMaxSize(),
-        contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
-    ) {
-        item {
-            TabSummary(
-                stringResource(
-                    R.string.quota_summary_format,
-                    formatCompactNumber(today?.totalTokens ?: 0),
-                    formatCost(today?.costUsd ?: 0.0),
-                    visibleLimits.size
-                )
+    Column(modifier = Modifier.fillMaxSize()) {
+        TabSummary(
+            stringResource(
+                R.string.quota_summary_format,
+                formatCompactNumber(today?.totalTokens ?: 0),
+                formatCost(today?.costUsd ?: 0.0),
+                visibleLimits.size
             )
-        }
-
-        items(visibleLimits) { provider ->
-            QuotaProviderCard(provider)
+        )
+        LazyColumn(
+            modifier = Modifier
+                .fillMaxWidth()
+                .weight(1f),
+            contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 16.dp, vertical = 4.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            items(visibleLimits) { provider ->
+                QuotaProviderCard(provider)
+            }
         }
     }
 }
@@ -1704,7 +1718,7 @@ internal fun TabSummary(text: String) {
         text,
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 6.dp),
+            .padding(horizontal = 16.dp, vertical = 8.dp),
         style = MaterialTheme.typography.labelSmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant
     )
@@ -1715,7 +1729,7 @@ internal fun TabSummaryRow(text: String, trailing: (@Composable () -> Unit)? = n
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 6.dp),
+            .padding(horizontal = 16.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Text(
@@ -1730,32 +1744,30 @@ internal fun TabSummaryRow(text: String, trailing: (@Composable () -> Unit)? = n
 
 @Composable
 private fun UsageBreakdownList(summary: String, rows: List<UsageRowData>, totalTokens: Long) {
-    LazyColumn(
-        modifier = Modifier.fillMaxSize(),
-        contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp)
-    ) {
-        item {
-            Text(
-                summary,
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(horizontal = 4.dp, vertical = 6.dp)
-            )
-        }
-        item {
-            Card(modifier = Modifier.fillMaxWidth()) {
-                Column {
-                    rows.forEachIndexed { index, row ->
-                        if (index > 0) {
-                            HorizontalDivider(modifier = Modifier.padding(horizontal = 14.dp))
+    Column(modifier = Modifier.fillMaxSize()) {
+        TabSummary(summary)
+        LazyColumn(
+            modifier = Modifier
+                .fillMaxWidth()
+                .weight(1f),
+            contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 16.dp, vertical = 4.dp)
+        ) {
+            item {
+                Card(modifier = Modifier.fillMaxWidth()) {
+                    Column {
+                        rows.forEachIndexed { index, row ->
+                            if (index > 0) {
+                                HorizontalDivider(modifier = Modifier.padding(horizontal = 14.dp))
+                            }
+                            UsageRankRow(rank = index + 1, row = row, totalTokens = totalTokens)
                         }
-                        UsageRankRow(rank = index + 1, row = row, totalTokens = totalTokens)
                     }
                 }
             }
         }
     }
 }
+
 
 @Composable
 private fun formatShareFraction(fraction: Double): String =
@@ -2532,13 +2544,23 @@ fun TrendsTab(history: HistoryResponse?) {
     val byClient = aggregateHistoryBuckets(daily) { it.perClient }
     val byModel = aggregateHistoryBuckets(daily, resolveAliases = true) { it.perModel }
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .verticalScroll(rememberScrollState())
-            .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
-    ) {
+    Column(modifier = Modifier.fillMaxSize()) {
+        TabSummary(
+            stringResource(
+                R.string.trends_summary_line_format,
+                rangeActiveDays,
+                formatCompactNumber(rangeTokens),
+                formatCost(rangeCost)
+            )
+        )
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .weight(1f)
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 16.dp, vertical = 4.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             listOf(R.string.trends_range_7d, R.string.trends_range_30d, R.string.trends_range_all)
                 .forEachIndexed { index, res ->
@@ -2555,13 +2577,13 @@ fun TrendsTab(history: HistoryResponse?) {
                 Text(stringResource(R.string.trends_summary), style = MaterialTheme.typography.titleSmall)
                 Spacer(modifier = Modifier.height(12.dp))
                 Row(modifier = Modifier.fillMaxWidth()) {
-                    StatItem(stringResource(R.string.trends_total_tokens), formatNumber(rangeTokens), Modifier.weight(1f))
+                    StatItem(stringResource(R.string.trends_total_tokens), formatCompactNumber(rangeTokens), Modifier.weight(1f))
                     StatItem(stringResource(R.string.trends_total_cost), formatCost(rangeCost), Modifier.weight(1f))
                     StatItem(stringResource(R.string.trends_active_days), rangeActiveDays.toString(), Modifier.weight(1f))
                 }
                 Spacer(modifier = Modifier.height(8.dp))
                 Row(modifier = Modifier.fillMaxWidth()) {
-                    StatItem(stringResource(R.string.trends_messages), formatNumber(rangeMessages.toLong()), Modifier.weight(1f))
+                    StatItem(stringResource(R.string.trends_messages), formatCompactNumber(rangeMessages.toLong()), Modifier.weight(1f))
                     StatItem(stringResource(R.string.trends_active_time), formatActiveTime(rangeActiveTimeMs), Modifier.weight(1f))
                     Spacer(modifier = Modifier.weight(1f))
                 }
@@ -2582,7 +2604,7 @@ fun TrendsTab(history: HistoryResponse?) {
                     Text(stringResource(R.string.trends_lifetime_summary), style = MaterialTheme.typography.titleSmall)
                     Spacer(modifier = Modifier.height(12.dp))
                     Row(modifier = Modifier.fillMaxWidth()) {
-                        StatItem(stringResource(R.string.trends_total_tokens), formatNumber(summary.totalTokens), Modifier.weight(1f))
+                        StatItem(stringResource(R.string.trends_total_tokens), formatCompactNumber(summary.totalTokens), Modifier.weight(1f))
                         StatItem(stringResource(R.string.trends_total_cost), formatCost(summary.totalCost), Modifier.weight(1f))
                         StatItem(stringResource(R.string.trends_active_days), summary.activeDays.toString(), Modifier.weight(1f))
                     }
@@ -2590,7 +2612,7 @@ fun TrendsTab(history: HistoryResponse?) {
                     Row(modifier = Modifier.fillMaxWidth()) {
                         StatItem(stringResource(R.string.trends_current_streak), stringResource(R.string.trends_streak_format, summary.currentStreak), Modifier.weight(1f))
                         StatItem(stringResource(R.string.trends_longest_streak), stringResource(R.string.trends_streak_format, summary.longestStreak), Modifier.weight(1f))
-                        StatItem(stringResource(R.string.trends_peak_day), formatNumber(summary.peakDayTokens), Modifier.weight(1f))
+                        StatItem(stringResource(R.string.trends_peak_day), formatCompactNumber(summary.peakDayTokens), Modifier.weight(1f))
                     }
                     if (summary.activeTimeMs > 0) {
                         Spacer(modifier = Modifier.height(8.dp))
@@ -2677,7 +2699,7 @@ fun TrendsTab(history: HistoryResponse?) {
                         ) {
                             Text(m.month, style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
                             Text(
-                                "${formatNumber(m.tokens)} tokens",
+                                "${formatCompactNumber(m.tokens)} tokens",
                                 style = MaterialTheme.typography.bodySmall,
                                 fontWeight = FontWeight.Medium,
                                 modifier = Modifier.width(120.dp)
@@ -2693,6 +2715,7 @@ fun TrendsTab(history: HistoryResponse?) {
                     }
                 }
             }
+        }
         }
     }
 }

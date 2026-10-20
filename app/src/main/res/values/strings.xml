@@ -357,4 +357,6 @@
     <string name="sessions_summary_format">%d sessions</string>
     <string name="subscriptions_summary_format">%d subscriptions</string>
     <string name="projects_summary_format">%1$d projects · %2$s tokens · %3$s</string>
+    <string name="overview_summary_format">%1$d devices · today %2$s tokens · %3$s</string>
+    <string name="trends_summary_line_format">%1$d active days · %2$s tokens · %3$s</string>
 </resources>

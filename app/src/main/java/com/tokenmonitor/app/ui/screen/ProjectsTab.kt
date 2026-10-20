@@ -57,10 +57,20 @@ fun ProjectsTab(
     val totalTokens = period?.totalTokens ?: 0L
 
     Column(modifier = Modifier.fillMaxSize()) {
+        if (projects.isNotEmpty()) {
+            TabSummary(
+                stringResource(
+                    R.string.projects_summary_format,
+                    projects.size,
+                    formatCompactNumber(totalTokens),
+                    projectFormatCost(projects.values.sumOf { it.costUsd })
+                )
+            )
+        }
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 12.dp),
+                .padding(horizontal = 16.dp, vertical = 4.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             listOf(R.string.period_today, R.string.period_month, R.string.period_all_time)
@@ -71,17 +81,6 @@ fun ProjectsTab(
                         label = { Text(stringResource(res)) }
                     )
                 }
-        }
-
-        if (projects.isNotEmpty()) {
-            TabSummary(
-                stringResource(
-                    R.string.projects_summary_format,
-                    projects.size,
-                    formatCompactNumber(totalTokens),
-                    projectFormatCost(projects.values.sumOf { it.costUsd })
-                )
-            )
         }
 
         if (projectsIncomplete) {
