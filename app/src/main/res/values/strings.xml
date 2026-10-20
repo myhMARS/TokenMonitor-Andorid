@@ -340,4 +340,13 @@
     <string name="overview_hub_build_label">Build</string>
     <string name="overview_hub_today_label">Today ends</string>
     <string name="overview_hub_stale_label">Offline threshold</string>
+    <string name="apikeys_summary_format">%1$d platforms · %2$d keys</string>
+    <string name="apikeys_keys_valid_format">%1$d keys · %2$d valid</string>
+    <string name="apikeys_status_checking">Checking</string>
+    <string name="apikeys_status_valid">Valid</string>
+    <string name="apikeys_status_invalid">Invalid</string>
+    <string name="apikeys_status_error">Error</string>
+    <string name="apikeys_status_unverified">Unverified</string>
+    <string name="apikeys_clear_search">Clear search</string>
+    <string name="apikeys_no_results">No matching keys</string>
 </resources>

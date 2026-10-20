@@ -340,4 +340,13 @@
     <string name="overview_hub_build_label">构建</string>
     <string name="overview_hub_today_label">今日截止</string>
     <string name="overview_hub_stale_label">离线阈值</string>
+    <string name="apikeys_summary_format">%1$d 个平台 · %2$d 个密钥</string>
+    <string name="apikeys_keys_valid_format">%1$d 个密钥 · %2$d 个可用</string>
+    <string name="apikeys_status_checking">验证中</string>
+    <string name="apikeys_status_valid">可用</string>
+    <string name="apikeys_status_invalid">无效</string>
+    <string name="apikeys_status_error">错误</string>
+    <string name="apikeys_status_unverified">未验证</string>
+    <string name="apikeys_clear_search">清除搜索</string>
+    <string name="apikeys_no_results">没有匹配的密钥</string>
 </resources>

@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -25,21 +26,29 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Key
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
+import androidx.compose.material3.Surface
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -102,6 +111,57 @@ private var autoValidated = false
 private val persistedResults = mutableMapOf<String, String>()
 private val persistedValidating = mutableSetOf<String>()
 private var validationVersion by mutableIntStateOf(0)
+
+@Composable
+private fun KeyStatusChip(
+    result: String?,
+    validating: Boolean,
+    onClick: (() -> Unit)?
+) {
+    val label = when {
+        validating -> stringResource(R.string.apikeys_status_checking)
+        result == "valid" -> stringResource(R.string.apikeys_status_valid)
+        result?.startsWith("invalid") == true -> stringResource(R.string.apikeys_status_invalid)
+        result?.startsWith("error") == true -> stringResource(R.string.apikeys_status_error)
+        else -> stringResource(R.string.apikeys_status_unverified)
+    }
+    val color = when {
+        validating -> MaterialTheme.colorScheme.onSurfaceVariant
+        result == "valid" -> Color(0xFF4CAF50)
+        result?.startsWith("invalid") == true -> MaterialTheme.colorScheme.error
+        result?.startsWith("error") == true -> Color(0xFFFFA726)
+        else -> MaterialTheme.colorScheme.onSurfaceVariant
+    }
+    Surface(
+        shape = MaterialTheme.shapes.small,
+        color = color.copy(alpha = 0.12f),
+        modifier = if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            if (validating) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(12.dp),
+                    strokeWidth = 1.5.dp,
+                    color = color
+                )
+            } else if (result == "valid" || result?.startsWith("invalid") == true || result?.startsWith("error") == true) {
+                Icon(
+                    if (result == "valid") Icons.Default.CheckCircle else Icons.Default.Error,
+                    contentDescription = null,
+                    tint = color,
+                    modifier = Modifier.size(12.dp)
+                )
+            }
+            if (validating || result == "valid" || result?.startsWith("invalid") == true || result?.startsWith("error") == true) {
+                Spacer(modifier = Modifier.width(4.dp))
+            }
+            Text(label, style = MaterialTheme.typography.labelSmall, color = color, fontWeight = FontWeight.Medium)
+        }
+    }
+}
 
 @Composable
 fun ApiKeysTab(keyAction: String? = null, onKeyActionHandled: () -> Unit = {}, importedData: String? = null, onExportData: ((String) -> Unit)? = null) {
@@ -317,15 +377,58 @@ fun ApiKeysTab(keyAction: String? = null, onKeyActionHandled: () -> Unit = {}, i
         )
     }
 
+    val totalKeys = data.platforms.values.sumOf { it.keys.size }
+
     Column(modifier = Modifier.fillMaxSize()) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    stringResource(R.string.apikeys_title),
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold
+                )
+                Text(
+                    stringResource(R.string.apikeys_summary_format, data.platforms.size, totalKeys),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            FilledTonalButton(
+                onClick = { showAddDialog = true },
+                contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+            ) {
+                Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp))
+                Spacer(modifier = Modifier.width(4.dp))
+                Text(stringResource(R.string.apikeys_add_btn))
+            }
+        }
+
         OutlinedTextField(
             value = searchQuery,
             onValueChange = { searchQuery = it },
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 4.dp),
             placeholder = { Text(stringResource(R.string.apikeys_search_hint)) },
             leadingIcon = { Icon(Icons.Default.Search, null) },
-            singleLine = true
+            trailingIcon = if (searchQuery.isNotEmpty()) {
+                {
+                    IconButton(onClick = { searchQuery = "" }) {
+                        Icon(Icons.Default.Close, stringResource(R.string.apikeys_clear_search))
+                    }
+                }
+            } else {
+                null
+            },
+            singleLine = true,
+            shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp)
         )
+        Spacer(modifier = Modifier.height(4.dp))
 
         if (data.platforms.isEmpty()) {
             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -337,6 +440,14 @@ fun ApiKeysTab(keyAction: String? = null, onKeyActionHandled: () -> Unit = {}, i
                     Text(stringResource(R.string.apikeys_empty_hint), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
+        } else if (filteredPlatforms.isEmpty()) {
+            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                Text(
+                    stringResource(R.string.apikeys_no_results),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
         } else {
             LazyColumn(
                 modifier = Modifier.fillMaxSize(),
@@ -345,59 +456,98 @@ fun ApiKeysTab(keyAction: String? = null, onKeyActionHandled: () -> Unit = {}, i
             ) {
                 items(filteredPlatforms) { (platform, pkeys) ->
                     val isExpanded = platform in expandedPlatforms
+                    val validCount = pkeys.keys.count {
+                        persistedResults["$platform:${it.key.take(16)}"] == "valid"
+                    }
                     Card(modifier = Modifier.fillMaxWidth()) {
                         Column {
                             Row(
-                                modifier = Modifier.fillMaxWidth().clickable {
-                                    expandedPlatforms = if (isExpanded) expandedPlatforms - platform else expandedPlatforms + platform
-                                }.padding(12.dp),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable {
+                                        expandedPlatforms = if (isExpanded) expandedPlatforms - platform else expandedPlatforms + platform
+                                    }
+                                    .padding(horizontal = 14.dp, vertical = 12.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                ToolAvatar(tool = platform, label = platform, color = toolColor(platform), size = 24.dp)
+                                ToolAvatar(tool = platform, label = toolLabel(platform), color = toolColor(platform), size = 28.dp)
                                 Spacer(modifier = Modifier.width(10.dp))
                                 Column(modifier = Modifier.weight(1f)) {
-                                    Text(platform, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
-                                    Text(stringResource(R.string.apikeys_keys_format, pkeys.keys.size), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    Text(
+                                        toolLabel(platform),
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        fontWeight = FontWeight.Medium
+                                    )
+                                    Text(
+                                        if (validCount > 0) {
+                                            stringResource(R.string.apikeys_keys_valid_format, pkeys.keys.size, validCount)
+                                        } else {
+                                            stringResource(R.string.apikeys_keys_format, pkeys.keys.size)
+                                        },
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
                                 }
-                                Text(if (isExpanded) "▾" else "▸", style = MaterialTheme.typography.bodyMedium)
+                                Icon(
+                                    if (isExpanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.size(20.dp)
+                                )
                             }
                             if (isExpanded) {
                                 pkeys.keys.forEachIndexed { entryIndex, entry ->
-                                    Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                                    if (entryIndex > 0) {
+                                        HorizontalDivider(modifier = Modifier.padding(horizontal = 14.dp))
+                                    }
+                                    val vTag = "$platform:${entry.key.take(16)}"
+                                    val vResult = persistedResults[vTag]
+                                    val validating = vTag in persistedValidating
+                                    val pDef = knownPlatforms.find { it.id == platform.lowercase() }
+                                        ?.takeIf { it.validationUrl.isNotEmpty() }
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(horizontal = 14.dp, vertical = 10.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
                                         Column(modifier = Modifier.weight(1f)) {
-                                            Text(entry.name, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Medium)
-                                            Text(entry.key.take(12) + "…" + entry.key.takeLast(4), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                            val vTag = "$platform:${entry.key.take(16)}"
-                                            val vResult = persistedResults[vTag]
-                                            if (vResult != null && vResult != "valid") {
-                                                Text(vResult, style = MaterialTheme.typography.labelSmall, color = when {
-                                                    vResult.startsWith("error") -> Color(0xFFFFA726)
-                                                    else -> MaterialTheme.colorScheme.error
-                                                }, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                            Text(
+                                                entry.name,
+                                                style = MaterialTheme.typography.bodyMedium,
+                                                fontWeight = FontWeight.Medium
+                                            )
+                                            Text(
+                                                entry.key.take(12) + "\u2026" + entry.key.takeLast(4),
+                                                style = MaterialTheme.typography.labelSmall,
+                                                fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
+                                            if (!vResult.isNullOrBlank() && vResult != "valid") {
+                                                Text(
+                                                    vResult,
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    color = if (vResult.startsWith("error")) Color(0xFFFFA726) else MaterialTheme.colorScheme.error,
+                                                    maxLines = 1,
+                                                    overflow = TextOverflow.Ellipsis
+                                                )
                                             }
                                         }
+                                        KeyStatusChip(
+                                            result = vResult,
+                                            validating = validating,
+                                            onClick = pDef?.let { def ->
+                                                { validateKey(def, entry.key, entry.name) }
+                                            }
+                                        )
                                         IconButton(onClick = {
                                             val cb = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
                                             cb.setPrimaryClip(ClipData.newPlainText("API Key", entry.key))
                                             Toast.makeText(context, copiedMsg, Toast.LENGTH_SHORT).show()
                                         }, modifier = Modifier.size(32.dp)) {
                                             Icon(Icons.Default.ContentCopy, stringResource(R.string.apikeys_copy_desc), modifier = Modifier.size(16.dp))
-                                        }
-                                        // Validate button — only for known platforms
-                                        val pDef = knownPlatforms.find { it.id == platform.lowercase() }
-                                        if (pDef != null && pDef.validationUrl.isNotEmpty()) {
-                                            val vTag = "$platform:${entry.key.take(16)}"
-                                            val vResult = persistedResults[vTag]
-                                            IconButton(onClick = { validateKey(pDef, entry.key, entry.name) }, modifier = Modifier.size(32.dp)) {
-                                                if (vTag in persistedValidating) {
-                                                    CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
-                                                } else when {
-                                                    vResult == "valid" -> Icon(Icons.Default.CheckCircle, vResult, tint = Color(0xFF4CAF50), modifier = Modifier.size(16.dp))
-                                                    vResult != null && vResult.startsWith("error") -> Icon(Icons.Default.Error, vResult, tint = Color(0xFFFFA726), modifier = Modifier.size(16.dp))
-                                                    vResult != null -> Icon(Icons.Default.Error, vResult, tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(16.dp))
-                                                    else -> Icon(Icons.Default.CheckCircle, "Validate", tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f), modifier = Modifier.size(16.dp))
-                                                }
-                                            }
                                         }
                                         IconButton(onClick = {
                                             showDeleteConfirm = PendingKeyDelete(platform, entryIndex, entry.name, entry.key)
@@ -414,6 +564,7 @@ fun ApiKeysTab(keyAction: String? = null, onKeyActionHandled: () -> Unit = {}, i
         }
     }
 
+    // Add dialog
     // Add dialog
     if (showAddDialog) {
         var addPlatform by remember { mutableStateOf(knownPlatforms[0]) }
