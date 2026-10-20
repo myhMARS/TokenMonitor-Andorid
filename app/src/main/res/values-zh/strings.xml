@@ -330,4 +330,6 @@
     <string name="health_unavailable_count_format">%d 个不可用</string>
     <string name="health_unknown_count_format">%d 个未知</string>
     <string name="setup_error_local_network_denied">Android 17 需要“附近的设备”权限才能访问局域网 Hub。请在系统设置中允许本应用后重试。</string>
+    <string name="sessions_untitled_format">会话 %s</string>
+    <string name="sessions_metric_msgs_format">消息 %d</string>
 </resources>

@@ -330,4 +330,6 @@
     <string name="health_unavailable_count_format">%d unavailable</string>
     <string name="health_unknown_count_format">%d unknown</string>
     <string name="setup_error_local_network_denied">Android 17 requires the Nearby devices permission to reach a hub on your LAN. Allow it for this app in system settings, then connect again.</string>
+    <string name="sessions_untitled_format">Session %s</string>
+    <string name="sessions_metric_msgs_format">Msgs %d</string>
 </resources>

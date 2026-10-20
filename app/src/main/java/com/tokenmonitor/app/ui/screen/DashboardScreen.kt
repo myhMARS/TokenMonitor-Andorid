@@ -11,6 +11,7 @@ import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -29,6 +30,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Snackbar
+import androidx.compose.material3.Surface
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.TextButton
@@ -1856,11 +1858,15 @@ fun SessionsTab(sessions: List<SessionInfo>) {
 @Composable
 fun SessionCard(session: SessionInfo, onClick: () -> Unit = {}) {
     val state = sessionState(session)
-    val title = sessionTitle(session)
-    val subtitle = listOfNotNull(
-        session.projectLabel?.takeIf { it.isNotBlank() && it != title },
-        session.sessionId.takeLast(40).takeIf { it != title }
-    ).joinToString(" · ")
+    val shortId = session.sessionId.takeLast(8)
+    val project = session.projectLabel?.takeIf { it.isNotBlank() }
+    val explicitTitle = session.title?.takeIf { it.isNotBlank() }
+    val title = explicitTitle ?: project
+        ?: stringResource(R.string.sessions_untitled_format, shortId)
+    val subtitle = buildList {
+        if (explicitTitle != null && project != null) add(project)
+        if (explicitTitle != null || project != null) add("#$shortId")
+    }.joinToString(" · ")
     val cacheHit = cacheHitRate(session)
     val speed = outputTokensPerSecond(session)
     val context = contextUsage(session)
@@ -1880,7 +1886,8 @@ fun SessionCard(session: SessionInfo, onClick: () -> Unit = {}) {
                     Spacer(modifier = Modifier.width(6.dp))
                     Text(
                         toolLabel(session.client),
-                        style = MaterialTheme.typography.labelSmall,
+                        style = MaterialTheme.typography.bodySmall,
+                        fontWeight = FontWeight.Medium,
                         color = MaterialTheme.colorScheme.primary,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
@@ -1890,12 +1897,17 @@ fun SessionCard(session: SessionInfo, onClick: () -> Unit = {}) {
                         SessionStateBadge(state)
                     }
                 }
-                Text(formatNumber(session.totalTokens), style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold)
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    formatCompactNumber(session.totalTokens),
+                    style = MaterialTheme.typography.bodySmall,
+                    fontWeight = FontWeight.Bold
+                )
             }
-            Spacer(modifier = Modifier.height(4.dp))
+            Spacer(modifier = Modifier.height(6.dp))
             Text(
                 title,
-                style = MaterialTheme.typography.bodySmall,
+                style = MaterialTheme.typography.bodyMedium,
                 fontWeight = FontWeight.Medium,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis
@@ -1909,45 +1921,28 @@ fun SessionCard(session: SessionInfo, onClick: () -> Unit = {}) {
                     overflow = TextOverflow.Ellipsis
                 )
             }
-            Spacer(modifier = Modifier.height(4.dp))
-            Row(
+            Spacer(modifier = Modifier.height(8.dp))
+            FlowRow(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp)
             ) {
-                Text(
-                    stringResource(R.string.sessions_msgs_cost_format, session.messageCount, formatCost(session.costUsd)),
-                    style = MaterialTheme.typography.labelSmall
+                MetricChip(stringResource(R.string.sessions_metric_msgs_format, session.messageCount))
+                MetricChip(
+                    formatCost(session.costUsd),
+                    color = MaterialTheme.colorScheme.tertiary
                 )
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    cacheHit?.let {
-                        Text(
-                            stringResource(R.string.sessions_metric_cache_format, it * 100),
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                    speed?.let {
-                        Text(
-                            stringResource(R.string.sessions_metric_tps_format, it),
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                    context?.let {
-                        Text(
-                            stringResource(R.string.sessions_metric_context_format, it * 100),
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                    session.lastUsedAt?.let { last ->
-                        Text(
-                            formatTime(last, LocalContext.current),
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
+                cacheHit?.let {
+                    MetricChip(stringResource(R.string.sessions_metric_cache_format, it * 100))
+                }
+                speed?.let {
+                    MetricChip(stringResource(R.string.sessions_metric_tps_format, it))
+                }
+                context?.let {
+                    MetricChip(stringResource(R.string.sessions_metric_context_format, it * 100))
+                }
+                session.lastUsedAt?.let { last ->
+                    MetricChip(formatTime(last, LocalContext.current))
                 }
             }
             val flags = buildList {
@@ -1959,7 +1954,7 @@ fun SessionCard(session: SessionInfo, onClick: () -> Unit = {}) {
                 }
             }
             if (flags.isNotEmpty()) {
-                Spacer(modifier = Modifier.height(4.dp))
+                Spacer(modifier = Modifier.height(6.dp))
                 Text(
                     flags.joinToString(" · "),
                     style = MaterialTheme.typography.labelSmall,
@@ -1967,6 +1962,25 @@ fun SessionCard(session: SessionInfo, onClick: () -> Unit = {}) {
                 )
             }
         }
+    }
+}
+
+@Composable
+private fun MetricChip(
+    text: String,
+    color: Color = MaterialTheme.colorScheme.onSurfaceVariant
+) {
+    Surface(
+        shape = MaterialTheme.shapes.small,
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f)
+    ) {
+        Text(
+            text,
+            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+            style = MaterialTheme.typography.labelSmall,
+            color = color,
+            maxLines = 1
+        )
     }
 }
 
