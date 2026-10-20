@@ -1,3 +1,5 @@
+@file:OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
+
 package com.tokenmonitor.app.ui.screen
 
 import androidx.compose.foundation.Canvas
@@ -76,6 +78,7 @@ import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -2131,7 +2134,10 @@ fun SessionDetailDialog(session: SessionInfo, onDismiss: () -> Unit) {
                             Spacer(modifier = Modifier.height(4.dp))
                             LinearProgressIndicator(
                                 progress = { ratio.toFloat() },
-                                modifier = Modifier.fillMaxWidth().height(6.dp)
+                                modifier = Modifier.fillMaxWidth().height(6.dp),
+                                strokeCap = StrokeCap.Butt,
+                                gapSize = 0.dp,
+                                drawStopIndicator = {}
                             )
                         }
                         cacheHit?.let {
@@ -2519,7 +2525,10 @@ private fun BreakdownCard(
                     progress = { (tokens.toFloat() / totalTokens).coerceIn(0f, 1f) },
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(4.dp)
+                        .height(4.dp),
+                    strokeCap = StrokeCap.Butt,
+                    gapSize = 0.dp,
+                    drawStopIndicator = {}
                 )
             }
         }
