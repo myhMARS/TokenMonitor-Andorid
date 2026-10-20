@@ -352,4 +352,9 @@
     <string name="models_summary_format">%1$d models · %2$s tokens · %3$s</string>
     <string name="tools_summary_format">%1$d tools · %2$s tokens · %3$s</string>
     <string name="overview_share_small" formatted="false">&lt;0.1%</string>
+    <string name="quota_summary_format">Today %1$s tokens · %2$s · %3$d providers</string>
+    <string name="devices_summary_format">%1$d devices · %2$d online</string>
+    <string name="sessions_summary_format">%d sessions</string>
+    <string name="subscriptions_summary_format">%d subscriptions</string>
+    <string name="projects_summary_format">%1$d projects · %2$s tokens · %3$s</string>
 </resources>

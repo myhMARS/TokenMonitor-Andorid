@@ -352,4 +352,9 @@
     <string name="models_summary_format">%1$d 个模型 · %2$s token · %3$s</string>
     <string name="tools_summary_format">%1$d 个工具 · %2$s token · %3$s</string>
     <string name="overview_share_small" formatted="false">&lt;0.1%</string>
+    <string name="quota_summary_format">今日 %1$s token · %2$s · %3$d 个提供商</string>
+    <string name="devices_summary_format">%1$d 台设备 · %2$d 台在线</string>
+    <string name="sessions_summary_format">%d 个会话</string>
+    <string name="subscriptions_summary_format">%d 个订阅</string>
+    <string name="projects_summary_format">%1$d 个项目 · %2$s token · %3$s</string>
 </resources>

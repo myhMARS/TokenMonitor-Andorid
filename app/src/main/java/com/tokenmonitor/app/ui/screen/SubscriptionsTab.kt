@@ -20,6 +20,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Payments
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
@@ -68,26 +69,10 @@ fun SubscriptionsTab(
     var showAdd by remember { mutableStateOf(false) }
     var pendingDelete by remember { mutableStateOf<SubscriptionRecord?>(null) }
 
-    if (isLoading && subscriptions.isEmpty()) {
-        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            CircularProgressIndicator()
-        }
-        return
-    }
-
-    LazyColumn(
-        modifier = Modifier.fillMaxSize(),
-        contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
-    ) {
-        item {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    stringResource(R.string.subscriptions_title),
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold,
-                    modifier = Modifier.weight(1f)
-                )
+    Column(modifier = Modifier.fillMaxSize()) {
+        TabSummaryRow(
+            text = stringResource(R.string.subscriptions_summary_format, subscriptions.size),
+            trailing = {
                 IconButton(onClick = onRefresh) {
                     Icon(Icons.Default.Refresh, contentDescription = stringResource(R.string.subscriptions_refresh))
                 }
@@ -95,40 +80,54 @@ fun SubscriptionsTab(
                     Icon(Icons.Default.Add, contentDescription = stringResource(R.string.subscriptions_add))
                 }
             }
-        }
+        )
 
-        if (subscriptions.isEmpty()) {
-            item {
-                Card(modifier = Modifier.fillMaxWidth()) {
-                    Column(modifier = Modifier.padding(16.dp)) {
-                        Text(stringResource(R.string.subscriptions_empty), style = MaterialTheme.typography.bodyMedium)
-                        Spacer(modifier = Modifier.height(4.dp))
+        if (isLoading && subscriptions.isEmpty()) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f),
+                contentAlignment = Alignment.Center
+            ) {
+                CircularProgressIndicator()
+            }
+        } else if (subscriptions.isEmpty()) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f)
+            ) {
+                EmptyTabState(
+                    Icons.Default.Payments,
+                    stringResource(R.string.subscriptions_empty),
+                    stringResource(R.string.subscriptions_empty_hint)
+                )
+            }
+        } else {
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f),
+                contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 16.dp, vertical = 4.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                item { SubscriptionSummary(subscriptions) }
+                items(subscriptions.sortedWith(compareBy({ it.provider }, { it.planName }))) { record ->
+                    SubscriptionCard(
+                        record = record,
+                        onEdit = { editing = record },
+                        onDelete = { pendingDelete = record }
+                    )
+                }
+                if (updatedAt.isNotBlank()) {
+                    item {
                         Text(
-                            stringResource(R.string.subscriptions_empty_hint),
+                            stringResource(R.string.subscriptions_updated_format, formatDateTimeShort(updatedAt)),
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
                 }
-            }
-        } else {
-            item { SubscriptionSummary(subscriptions) }
-            items(subscriptions.sortedWith(compareBy({ it.provider }, { it.planName }))) { record ->
-                SubscriptionCard(
-                    record = record,
-                    onEdit = { editing = record },
-                    onDelete = { pendingDelete = record }
-                )
-            }
-        }
-
-        if (updatedAt.isNotBlank()) {
-            item {
-                Text(
-                    stringResource(R.string.subscriptions_updated_format, formatDateTimeShort(updatedAt)),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
             }
         }
     }
@@ -198,7 +197,7 @@ private fun SubscriptionSummary(subscriptions: List<SubscriptionRecord>) {
     if (monthly.isEmpty() && topUps.isEmpty()) return
 
     Card(modifier = Modifier.fillMaxWidth()) {
-        Column(modifier = Modifier.padding(16.dp)) {
+        Column(modifier = Modifier.padding(14.dp)) {
             if (monthly.isNotEmpty()) {
                 Text(
                     stringResource(R.string.subscriptions_monthly_total),
@@ -243,7 +242,7 @@ private fun SubscriptionCard(
     val topUps = record.topUps.orEmpty()
 
     Card(modifier = Modifier.fillMaxWidth()) {
-        Column(modifier = Modifier.padding(16.dp)) {
+        Column(modifier = Modifier.padding(14.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 ToolAvatar(
                     tool = record.provider,

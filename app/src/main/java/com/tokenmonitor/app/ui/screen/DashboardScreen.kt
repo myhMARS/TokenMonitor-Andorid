@@ -680,13 +680,7 @@ fun QuotaTab(limits: List<LimitProvider>, today: UsagePeriod?) {
     val hasData = visibleLimits.isNotEmpty() || today != null
 
     if (!hasData) {
-        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Icon(Icons.Default.Speed, contentDescription = null, modifier = Modifier.size(48.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
-                Spacer(modifier = Modifier.height(8.dp))
-                Text(stringResource(R.string.quota_no_data), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-        }
+        EmptyTabState(Icons.Default.Speed, stringResource(R.string.quota_no_data))
         return
     }
 
@@ -695,30 +689,15 @@ fun QuotaTab(limits: List<LimitProvider>, today: UsagePeriod?) {
         contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        if (today != null) {
-            item {
-                Card(modifier = Modifier.fillMaxWidth()) {
-                    Column(modifier = Modifier.padding(16.dp)) {
-                        Text(stringResource(R.string.quota_today_consumption), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
-                        Spacer(modifier = Modifier.height(12.dp))
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Text(stringResource(R.string.stat_tokens), style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Medium)
-                            Text(formatNumber(today.totalTokens), style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold)
-                        }
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Text(stringResource(R.string.stat_cost), style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Medium)
-                            Text(formatCost(today.costUsd), style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.tertiary)
-                        }
-                    }
-                }
-            }
+        item {
+            TabSummary(
+                stringResource(
+                    R.string.quota_summary_format,
+                    formatCompactNumber(today?.totalTokens ?: 0),
+                    formatCost(today?.costUsd ?: 0.0),
+                    visibleLimits.size
+                )
+            )
         }
 
         items(visibleLimits) { provider ->
@@ -758,11 +737,11 @@ fun QuotaProviderCard(provider: LimitProvider) {
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(modifier = Modifier.padding(16.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(
-                    Icons.Default.Cloud,
-                    contentDescription = null,
-                    modifier = Modifier.size(20.dp),
-                    tint = statusColor(provider.status)
+                ToolAvatar(
+                    tool = provider.provider,
+                    label = providerLabel(provider.provider),
+                    color = toolColor(provider.provider),
+                    size = 24.dp
                 )
                 Spacer(modifier = Modifier.width(8.dp))
                 Column(modifier = Modifier.weight(1f)) {
@@ -1207,23 +1186,28 @@ private fun formatAmount(value: Double): String =
 @Composable
 fun DevicesTab(devices: List<DeviceRecord>, deletingDeviceId: String?, onDeleteDevice: (String) -> Unit) {
     if (devices.isEmpty()) {
-        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Icon(Icons.Default.Devices, contentDescription = null, modifier = Modifier.size(48.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
-                Spacer(modifier = Modifier.height(8.dp))
-                Text(stringResource(R.string.devices_no_devices), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-        }
+        EmptyTabState(Icons.Default.Devices, stringResource(R.string.devices_no_devices))
         return
     }
 
-    LazyColumn(
-        modifier = Modifier.fillMaxSize(),
-        contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp)
-    ) {
-        items(devices) { device ->
-            DeviceCard(device, isDeleting = deletingDeviceId == device.deviceId, onDeleteDevice)
+    Column(modifier = Modifier.fillMaxSize()) {
+        TabSummary(
+            stringResource(
+                R.string.devices_summary_format,
+                devices.size,
+                devices.count { !it.stale }
+            )
+        )
+        LazyColumn(
+            modifier = Modifier
+                .fillMaxSize()
+                .weight(1f),
+            contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 16.dp, vertical = 4.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            items(devices) { device ->
+                DeviceCard(device, isDeleting = deletingDeviceId == device.deviceId, onDeleteDevice)
+            }
         }
     }
 }
@@ -1242,7 +1226,7 @@ fun DeviceCard(device: DeviceRecord, isDeleting: Boolean = false, onDeleteDevice
 
     Card(modifier = Modifier.fillMaxWidth().clickable { showDetail = true }) {
         Row(
-            modifier = Modifier.fillMaxWidth().padding(16.dp),
+            modifier = Modifier.fillMaxWidth().padding(14.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Icon(
@@ -1270,7 +1254,7 @@ fun DeviceCard(device: DeviceRecord, isDeleting: Boolean = false, onDeleteDevice
                 }
                 allTime?.let {
                     Text(
-                        stringResource(R.string.devices_total_format, formatNumber(it.totalTokens), formatCost(it.costUsd)),
+                        stringResource(R.string.devices_total_format, formatCompactNumber(it.totalTokens), formatCost(it.costUsd)),
                         style = MaterialTheme.typography.labelSmall,
                         fontWeight = FontWeight.Medium
                     )
@@ -1696,13 +1680,51 @@ private data class UsageRowData(
 )
 
 @Composable
-private fun EmptyTabState(icon: androidx.compose.ui.graphics.vector.ImageVector, title: String) {
+internal fun EmptyTabState(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    title: String,
+    hint: String? = null
+) {
     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             Icon(icon, contentDescription = null, modifier = Modifier.size(48.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
             Spacer(modifier = Modifier.height(8.dp))
             Text(title, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            if (hint != null) {
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(hint, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
         }
+    }
+}
+
+@Composable
+internal fun TabSummary(text: String) {
+    Text(
+        text,
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 6.dp),
+        style = MaterialTheme.typography.labelSmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant
+    )
+}
+
+@Composable
+internal fun TabSummaryRow(text: String, trailing: (@Composable () -> Unit)? = null) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text,
+            modifier = Modifier.weight(1f),
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        trailing?.invoke()
     }
 }
 
@@ -2014,23 +2036,22 @@ fun SessionsTab(sessions: List<SessionInfo>) {
     var selectedSession by remember { mutableStateOf<SessionInfo?>(null) }
 
     if (sessions.isEmpty()) {
-        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Icon(Icons.Default.History, contentDescription = null, modifier = Modifier.size(48.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
-                Spacer(modifier = Modifier.height(8.dp))
-                Text(stringResource(R.string.sessions_no_sessions), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-        }
+        EmptyTabState(Icons.Default.History, stringResource(R.string.sessions_no_sessions))
         return
     }
 
-    LazyColumn(
-        modifier = Modifier.fillMaxSize(),
-        contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp)
-    ) {
-        items(sessions) { session ->
-            SessionCard(session, onClick = { selectedSession = session })
+    Column(modifier = Modifier.fillMaxSize()) {
+        TabSummary(stringResource(R.string.sessions_summary_format, sessions.size))
+        LazyColumn(
+            modifier = Modifier
+                .fillMaxSize()
+                .weight(1f),
+            contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 16.dp, vertical = 4.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            items(sessions) { session ->
+                SessionCard(session, onClick = { selectedSession = session })
+            }
         }
     }
 
@@ -2059,7 +2080,7 @@ fun SessionCard(session: SessionInfo, onClick: () -> Unit = {}) {
         modifier = Modifier.fillMaxWidth(),
         onClick = onClick
     ) {
-        Column(modifier = Modifier.padding(16.dp)) {
+        Column(modifier = Modifier.padding(14.dp)) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -2494,15 +2515,11 @@ fun TrendsTab(history: HistoryResponse?) {
     }
 
     if (allDaily.isEmpty() && monthly.isNullOrEmpty()) {
-        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Icon(Icons.AutoMirrored.Filled.TrendingUp, contentDescription = null, modifier = Modifier.size(48.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
-                Spacer(modifier = Modifier.height(8.dp))
-                Text(stringResource(R.string.trends_no_data), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Spacer(modifier = Modifier.height(4.dp))
-                Text(stringResource(R.string.trends_no_data_hint), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-        }
+        EmptyTabState(
+            Icons.AutoMirrored.Filled.TrendingUp,
+            stringResource(R.string.trends_no_data),
+            stringResource(R.string.trends_no_data_hint)
+        )
         return
     }
 
@@ -3041,7 +3058,7 @@ fun DailyCostChart(
 
 private fun formatNumber(n: Long): String = NumberFormat.getNumberInstance(Locale.US).format(n)
 
-private fun formatCompactNumber(n: Long): String {
+internal fun formatCompactNumber(n: Long): String {
     return when {
         n >= 1_000_000_000 -> String.format(Locale.US, "%.1fB", n / 1_000_000_000.0)
         n >= 1_000_000 -> String.format(Locale.US, "%.1fM", n / 1_000_000.0)

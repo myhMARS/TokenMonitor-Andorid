@@ -38,7 +38,6 @@ import androidx.compose.ui.unit.dp
 import com.tokenmonitor.app.R
 import com.tokenmonitor.app.data.model.ProjectRollup
 import com.tokenmonitor.app.data.model.UsagePeriod
-import java.text.NumberFormat
 import java.util.Locale
 
 @Composable
@@ -74,6 +73,17 @@ fun ProjectsTab(
                 }
         }
 
+        if (projects.isNotEmpty()) {
+            TabSummary(
+                stringResource(
+                    R.string.projects_summary_format,
+                    projects.size,
+                    formatCompactNumber(totalTokens),
+                    projectFormatCost(projects.values.sumOf { it.costUsd })
+                )
+            )
+        }
+
         if (projectsIncomplete) {
             Text(
                 stringResource(R.string.projects_incomplete),
@@ -88,29 +98,13 @@ fun ProjectsTab(
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .weight(1f),
-                contentAlignment = Alignment.Center
+                    .weight(1f)
             ) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Icon(
-                        Icons.Default.Folder,
-                        contentDescription = null,
-                        modifier = Modifier.size(48.dp),
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text(
-                        stringResource(R.string.projects_empty),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Text(
-                        stringResource(R.string.projects_empty_hint),
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
+                EmptyTabState(
+                    Icons.Default.Folder,
+                    stringResource(R.string.projects_empty),
+                    stringResource(R.string.projects_empty_hint)
+                )
             }
         } else {
             LazyColumn(
@@ -131,10 +125,10 @@ fun ProjectsTab(
 @Composable
 private fun ProjectCard(project: ProjectRollup, fallbackLabel: String, totalTokens: Long) {
     Card(modifier = Modifier.fillMaxWidth()) {
-        Column(modifier = Modifier.padding(16.dp)) {
+        Column(modifier = Modifier.padding(14.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
-                    project.label.ifBlank { fallbackLabel },
+                    project.label.ifBlank { fallbackLabel }.replaceFirstChar { it.uppercase() },
                     style = MaterialTheme.typography.titleSmall,
                     fontWeight = FontWeight.Bold,
                     modifier = Modifier.weight(1f),
@@ -154,7 +148,7 @@ private fun ProjectCard(project: ProjectRollup, fallbackLabel: String, totalToke
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
                 Text(
-                    projectFormatNumber(project.tokens) + " tokens",
+                    formatCompactNumber(project.tokens) + " tokens",
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -208,7 +202,7 @@ private fun ProjectCard(project: ProjectRollup, fallbackLabel: String, totalToke
                             overflow = TextOverflow.Ellipsis
                         )
                         Text(
-                            projectFormatNumber(tokens),
+                            formatCompactNumber(tokens),
                             style = MaterialTheme.typography.bodySmall,
                             fontWeight = FontWeight.Medium
                         )
@@ -238,7 +232,7 @@ private fun ProjectCard(project: ProjectRollup, fallbackLabel: String, totalToke
                             overflow = TextOverflow.Ellipsis
                         )
                         Text(
-                            projectFormatNumber(tokens),
+                            formatCompactNumber(tokens),
                             style = MaterialTheme.typography.bodySmall,
                             fontWeight = FontWeight.Medium
                         )
@@ -249,7 +243,7 @@ private fun ProjectCard(project: ProjectRollup, fallbackLabel: String, totalToke
             if (project.unpricedTokens > 0) {
                 Spacer(modifier = Modifier.height(6.dp))
                 Text(
-                    stringResource(R.string.projects_unpriced_hint, projectFormatNumber(project.unpricedTokens)),
+                    stringResource(R.string.projects_unpriced_hint, formatCompactNumber(project.unpricedTokens)),
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.tertiary
                 )
@@ -258,6 +252,5 @@ private fun ProjectCard(project: ProjectRollup, fallbackLabel: String, totalToke
     }
 }
 
-private fun projectFormatNumber(value: Long): String = NumberFormat.getNumberInstance(Locale.US).format(value)
 
 private fun projectFormatCost(value: Double): String = "$" + String.format(Locale.US, "%.2f", value)
