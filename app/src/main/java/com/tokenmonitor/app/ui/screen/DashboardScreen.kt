@@ -1870,7 +1870,10 @@ private val TOOL_RASTER_ICONS = mapOf(
     "unsloth" to R.drawable.ic_tool_unsloth,
     "devin" to R.drawable.ic_tool_devin,
     "fx" to R.drawable.ic_tool_fx,
-    "mcode" to R.drawable.ic_tool_mcode
+    "mcode" to R.drawable.ic_tool_mcode,
+    "bailian" to R.drawable.ic_tool_alibaba,
+    "alibaba" to R.drawable.ic_tool_alibaba,
+    "openrouter" to R.drawable.ic_tool_openrouter,
 )
 
 private fun toolIconRes(id: String): Int? = TOOL_ICONS[id]
