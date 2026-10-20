@@ -38,7 +38,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.IconButton
@@ -383,53 +383,38 @@ fun ApiKeysTab(keyAction: String? = null, onKeyActionHandled: () -> Unit = {}, i
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 12.dp),
+                .padding(start = 16.dp, end = 16.dp, top = 8.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    stringResource(R.string.apikeys_title),
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold
-                )
-                Text(
-                    stringResource(R.string.apikeys_summary_format, data.platforms.size, totalKeys),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-            FilledTonalButton(
-                onClick = { showAddDialog = true },
-                contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 12.dp, vertical = 6.dp)
-            ) {
-                Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp))
-                Spacer(modifier = Modifier.width(4.dp))
-                Text(stringResource(R.string.apikeys_add_btn))
+            OutlinedTextField(
+                value = searchQuery,
+                onValueChange = { searchQuery = it },
+                modifier = Modifier.weight(1f),
+                placeholder = { Text(stringResource(R.string.apikeys_search_hint)) },
+                leadingIcon = { Icon(Icons.Default.Search, null) },
+                trailingIcon = if (searchQuery.isNotEmpty()) {
+                    {
+                        IconButton(onClick = { searchQuery = "" }) {
+                            Icon(Icons.Default.Close, stringResource(R.string.apikeys_clear_search))
+                        }
+                    }
+                } else {
+                    null
+                },
+                singleLine = true,
+                shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp)
+            )
+            Spacer(modifier = Modifier.width(8.dp))
+            FilledTonalIconButton(onClick = { showAddDialog = true }) {
+                Icon(Icons.Default.Add, contentDescription = stringResource(R.string.apikeys_add_btn))
             }
         }
-
-        OutlinedTextField(
-            value = searchQuery,
-            onValueChange = { searchQuery = it },
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 4.dp),
-            placeholder = { Text(stringResource(R.string.apikeys_search_hint)) },
-            leadingIcon = { Icon(Icons.Default.Search, null) },
-            trailingIcon = if (searchQuery.isNotEmpty()) {
-                {
-                    IconButton(onClick = { searchQuery = "" }) {
-                        Icon(Icons.Default.Close, stringResource(R.string.apikeys_clear_search))
-                    }
-                }
-            } else {
-                null
-            },
-            singleLine = true,
-            shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp)
+        Text(
+            stringResource(R.string.apikeys_summary_format, data.platforms.size, totalKeys),
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
         )
-        Spacer(modifier = Modifier.height(4.dp))
-
         if (data.platforms.isEmpty()) {
             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
