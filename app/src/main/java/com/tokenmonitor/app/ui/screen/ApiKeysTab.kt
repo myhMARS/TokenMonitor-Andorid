@@ -459,7 +459,17 @@ fun ApiKeysTab(keyAction: String? = null, onKeyActionHandled: () -> Unit = {}, i
                     val entry = ApiKeyEntry(name = addName, created_at = LocalDate.now().toString(), key = addKey)
                     updated[platformId] = if (existing != null) PlatformKeys(existing.keys + entry) else PlatformKeys(listOf(entry))
                     persist(PlatformsData(updated))
+                    expandedPlatforms = expandedPlatforms + platformId
                     showAddDialog = false
+                    // Check the new key immediately so the row shows a result
+                    // without waiting for the next session's batch validation.
+                    knownPlatforms.find { it.id == platformId.lowercase() }
+                        ?.takeIf { it.validationUrl.isNotEmpty() }
+                        ?.let { pDef ->
+                            scope.launch {
+                                validateKeySuspend(pDef, entry.key, entry.name, force = true)
+                            }
+                        }
                 }) { Text(stringResource(R.string.apikeys_add_btn)) }
             },
             dismissButton = { TextButton(onClick = { showAddDialog = false }) { Text(stringResource(R.string.apikeys_cancel)) } }
